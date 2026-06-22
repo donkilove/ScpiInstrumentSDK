@@ -1,0 +1,23 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.dll
+*.exe
+*.pdb
+
+# IDE
+.vs/
+.idea/
+*.swp
+*.sln.iml
+
+# Build outputs
+publish/
+dist/
+artifacts/
+
+# Logs
+*.log
