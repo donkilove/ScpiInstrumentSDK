@@ -1,6 +1,6 @@
 # Spswj.Instrumentation
 
-[![NuGet](https://img.shields.io/nuget/v/Spswj.Instrumentation?label=NuGet&color=blue)](https://github.com/donkilove/Spswj.Instrumentation/pkgs/nuget/Spswj.Instrumentation)
+[![NuGet](https://img.shields.io/badge/NuGet-0.2.0-blue)](https://github.com/donkilove/Spswj.Instrumentation/pkgs/nuget/Spswj.Instrumentation)
 [![CI](https://github.com/donkilove/Spswj.Instrumentation/actions/workflows/ci.yml/badge.svg)](https://github.com/donkilove/Spswj.Instrumentation/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![TargetFramework](https://img.shields.io/badge/.NET-8.0-512BD4)](https://dotnet.microsoft.com/download/dotnet/8.0)
