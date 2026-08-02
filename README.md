@@ -5,6 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![TargetFramework](https://img.shields.io/badge/.NET-8.0-512BD4)](https://dotnet.microsoft.com/download/dotnet/8.0)
 
+**English** · [简体中文](README.zh-CN.md)
+
 A .NET library for TCP/IP + SCPI instrument communication and spectrum-analyzer trace parsing.
 
 Extracted from the production test host `SPSWJ v0.1.3` and published as a reusable component, so multiple test-host applications can share one well-tested communication stack instead of duplicating source code.

@@ -5,6 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![TargetFramework](https://img.shields.io/badge/.NET-8.0-512BD4)](https://dotnet.microsoft.com/download/dotnet/8.0)
 
+[English](README.md) · **简体中文**
+
 面向 .NET 的 TCP/IP + SCPI 仪器通信与频谱仪 trace 解析库。
 
 从生产上位机 `SPSWJ v0.1.3` 提取通信和频谱仪解析代码，发布为可复用组件——多个测试上位机可以共享同一套经过验证的通信栈，而不是各自复制源码。
