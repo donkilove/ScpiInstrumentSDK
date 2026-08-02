@@ -11,6 +11,7 @@
 - SCPI definite-length binary block 读取。
 - 频谱仪常用 SCPI 命令构造。
 - `REAL,32` trace 数据解析，返回最大功率点频率、功率和简单信噪差。
+- 自动重连装饰器：连接类异常时按指数退避自动重连并重放原操作，可配置最大重试次数与退避参数。
 
 ## 项目结构
 
@@ -19,6 +20,8 @@ src/
   Spswj.Instrumentation/
     IInstrumentChannel.cs
     TcpInstrumentChannel.cs
+    AutoReconnectChannel.cs
+    AutoReconnectOptions.cs
     SpectrumAnalyzers/
       SpectrumAnalyzerCommands.cs
       TraceDataParser.cs
@@ -72,6 +75,27 @@ var trace = TraceDataParser.ParseReal32Trace(
     rawTrace,
     centerFreqHz: 2400e6,
     spanHz: 100e6);
+```
+
+自动重连（可选）：
+
+```csharp
+using Spswj.Instrumentation;
+
+using var inner = new TcpInstrumentChannel();
+using var channel = new AutoReconnectChannel(inner, new AutoReconnectOptions
+{
+    MaxReconnectAttempts = 3,
+    InitialBackoff = TimeSpan.FromMilliseconds(200),
+    MaxBackoff = TimeSpan.FromSeconds(5)
+});
+
+await channel.ConnectAsync("192.168.1.1", 5025, CancellationToken.None);
+
+// 连接异常时自动重连并重放，调用方无需处理
+var idn = await channel.QueryAsync(
+    SpectrumAnalyzerCommands.QueryIdn(),
+    TimeSpan.FromSeconds(3));
 ```
 
 ## 版本口径
