@@ -1,56 +1,50 @@
 # Spswj.Instrumentation
 
-这是一个面向 .NET 的 TCP/IP + SCPI 仪器通信孵化库，当前主要沉淀频谱仪通信与 trace 数据解析能力。
+[![NuGet](https://img.shields.io/nuget/v/Spswj.Instrumentation?label=NuGet&color=blue)](https://github.com/donkilove/Spswj.Instrumentation/pkgs/nuget/Spswj.Instrumentation)
+[![CI](https://github.com/donkilove/Spswj.Instrumentation/actions/workflows/ci.yml/badge.svg)](https://github.com/donkilove/Spswj.Instrumentation/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![TargetFramework](https://img.shields.io/badge/.NET-8.0-512BD4)](https://dotnet.microsoft.com/download/dotnet/8.0)
 
-本仓库从 `SPSWJ v0.1.3` 提取通信和频谱仪解析代码，用于后续其他上位机复用。当前 `SPSWJ` 尚未引用本库，现有上位机项目仍保持独立发布和运行。
+A .NET library for TCP/IP + SCPI instrument communication and spectrum-analyzer trace parsing.
 
-## 当前范围
+Extracted from the production test host `SPSWJ v0.1.3` and published as a reusable component, so multiple test-host applications can share one well-tested communication stack instead of duplicating source code.
 
-- TCP/IP 仪器连接、断开和连接状态检查。
-- SCPI 文本命令发送与查询。
-- SCPI definite-length binary block 读取。
-- 频谱仪常用 SCPI 命令构造。
-- `REAL,32` trace 数据解析，返回最大功率点频率、功率和简单信噪差。
-- 自动重连装饰器：连接类异常时按指数退避自动重连并重放原操作，可配置最大重试次数与退避参数。
-- 可编程 mock 通道：按命令预设文本/二进制响应、记录发送命令、可注入瞬态故障，用于无仪器联调与自动化测试。
+## Features
 
-## 项目结构
+- **TCP/IP instrument channel** — connect / disconnect / state check with connection and read timeouts.
+- **SCPI text I/O** — send commands and query responses with cancellation support.
+- **SCPI definite-length binary blocks** — full `#<n><len>` header parsing, split-packet handling, and optional `\n` / `\r\n` terminator consumption.
+- **Spectrum-analyzer command builder** — center frequency, span, reference level, REAL,32 data format, MaxHold, and trace queries (InvariantCulture-safe).
+- **`REAL,32` trace parsing** — returns peak frequency, peak power, and a simple signal-to-noise delta.
+- **Auto-reconnect decorator** — transparently reconnects and replays the operation on connection errors, with exponential backoff and configurable retry limits.
+- **Programmable mock channel** — preset text/binary responses per command, records sent commands for assertions, and supports injecting transient failures for offline development and automated tests.
 
-```text
-src/
-  Spswj.Instrumentation/
-    IInstrumentChannel.cs
-    TcpInstrumentChannel.cs
-    AutoReconnectChannel.cs
-    AutoReconnectOptions.cs
-    MockInstrumentChannel.cs
-    SpectrumAnalyzers/
-      SpectrumAnalyzerCommands.cs
-      TraceDataParser.cs
-      TraceAnalysisResult.cs
-tests/
-  Spswj.Instrumentation.Tests/
+## Installation
+
+The package is published to GitHub Packages (NuGet feed):
+
+```bash
+dotnet add package Spswj.Instrumentation --version 0.2.0 \
+  --source "https://nuget.pkg.github.com/donkilove/index.json"
 ```
 
-## 快速开始
+> The GitHub Packages feed requires authentication. Configure a token with `read:packages` scope, for example via `gh auth token` in the environment, or add the feed as a NuGet source in your `NuGet.Config`.
 
-环境要求：
+## Quick Start
 
-- .NET 8 SDK
+Requirements: .NET 8 SDK
 
-构建：
+```bash
+# Build
+dotnet build Spswj.Instrumentation.sln
 
-```powershell
-dotnet build .\Spswj.Instrumentation.sln
+# Test
+dotnet test Spswj.Instrumentation.sln
 ```
 
-测试：
+## Usage
 
-```powershell
-dotnet test .\Spswj.Instrumentation.sln
-```
-
-## 示例
+### 1. Real instrument (TCP/IP + SCPI)
 
 ```csharp
 using Spswj.Instrumentation;
@@ -79,11 +73,9 @@ var trace = TraceDataParser.ParseReal32Trace(
     spanHz: 100e6);
 ```
 
-自动重连（可选）：
+### 2. Auto-reconnect (optional)
 
 ```csharp
-using Spswj.Instrumentation;
-
 using var inner = new TcpInstrumentChannel();
 using var channel = new AutoReconnectChannel(inner, new AutoReconnectOptions
 {
@@ -94,13 +86,15 @@ using var channel = new AutoReconnectChannel(inner, new AutoReconnectOptions
 
 await channel.ConnectAsync("192.168.1.1", 5025, CancellationToken.None);
 
-// 连接异常时自动重连并重放，调用方无需处理
+// Connection errors are handled transparently: reconnect + replay, no caller changes
 var idn = await channel.QueryAsync(
     SpectrumAnalyzerCommands.QueryIdn(),
     TimeSpan.FromSeconds(3));
 ```
 
-无仪器联调 / 测试（mock）：
+By default only connection-class errors (not connected / connection lost / socket / IO) trigger a reconnect. Protocol or data errors (e.g. incomplete payloads) never reconnect, so real problems are not masked. Customize the transient-error predicate via `AutoReconnectOptions.IsTransient`.
+
+### 3. Mock instrument (no hardware needed)
 
 ```csharp
 using var channel = new MockInstrumentChannel();
@@ -113,9 +107,49 @@ var idn = await channel.QueryAsync(
     SpectrumAnalyzerCommands.QueryIdn(),
     TimeSpan.FromSeconds(1));
 
-// channel.SentCommands 可断言实际发送了哪些命令
+// channel.SentCommands asserts which commands were actually sent
 ```
 
-## 版本口径
+## Project Structure
 
-`v0.1.0` 是孵化版本：代码来自已发布的 `SPSWJ v0.1.3`，已搬运并通过通信和解析相关测试，但 API 暂不承诺长期稳定。后续如果多个上位机实际复用，再进入更严格的兼容性管理。
+```text
+src/
+  Spswj.Instrumentation/
+    IInstrumentChannel.cs          # channel abstraction
+    TcpInstrumentChannel.cs        # real TCP/IP + SCPI channel
+    AutoReconnectChannel.cs        # reconnect decorator
+    AutoReconnectOptions.cs        # reconnect configuration
+    MockInstrumentChannel.cs       # programmable fake instrument
+    SpectrumAnalyzers/
+      SpectrumAnalyzerCommands.cs  # SCPI command builder
+      TraceDataParser.cs           # REAL,32 trace parsing
+      TraceAnalysisResult.cs       # parsed trace result record
+tests/
+  Spswj.Instrumentation.Tests/     # xUnit suite (33 tests)
+```
+
+## API Overview
+
+| Type | Purpose |
+|------|---------|
+| `IInstrumentChannel` | Channel abstraction: connect, disconnect, query, send, binary query |
+| `TcpInstrumentChannel` | Real TCP/IP implementation with 5s connect/read timeouts and SCPI binary block parsing |
+| `AutoReconnectChannel` | Decorator that auto-reconnects on connection errors and replays the operation |
+| `AutoReconnectOptions` | Max retries, initial/max backoff, custom transient-error predicate |
+| `MockInstrumentChannel` | Fake instrument with preset responses, command recording, and transient-failure injection |
+| `SpectrumAnalyzerCommands` | Static SCPI command builders (freq/span/ref-level/format/trace) |
+| `TraceDataParser` | Parses `REAL,32` trace bytes into peak frequency, power, and SNR delta |
+| `TraceAnalysisResult` | Immutable result record |
+
+## Validation
+
+- 33 xUnit tests covering protocol parsing, split packets, error paths, reconnect behavior, and mock scenarios.
+- Field fixtures from a real Agilent N9020A (captured 2026-06-11) are embedded in the test suite, so offline tests closely mirror real-device behavior.
+
+## Versioning
+
+`v0.1.x` was the incubator snapshot extracted from `SPSWJ v0.1.3`. `v0.2.0` adds auto-reconnect, the mock channel, and field-data fixtures, and is published as a NuGet package. The API is not yet committed to long-term stability; stricter compatibility management will begin once multiple test hosts actually consume the library.
+
+## License
+
+[MIT](LICENSE)

@@ -11,7 +11,7 @@
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <PackageId>Spswj.Instrumentation</PackageId>
     <Authors>donkilove</Authors>
-    <Description>TCP/IP + SCPI 仪器通信与频谱仪 trace 解析孵化库。</Description>
+    <Description>A .NET library for TCP/IP + SCPI instrument communication and spectrum-analyzer trace parsing.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <RepositoryType>git</RepositoryType>
