@@ -1,0 +1,46 @@
+name: publish-nuget
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-test-pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore Spswj.Instrumentation.sln
+
+      - name: Build
+        run: dotnet build Spswj.Instrumentation.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test Spswj.Instrumentation.sln --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
+
+      - name: Pack
+        run: dotnet pack src/Spswj.Instrumentation/Spswj.Instrumentation.csproj \
+          --configuration Release \
+          --no-build \
+          --output ./artifacts
+
+      - name: Push to GitHub Packages
+        env:
+          NUGET_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dotnet nuget push "./artifacts/*.nupkg" \
+            --source "https://nuget.pkg.github.com/donkilove/index.json" \
+            --api-key "$NUGET_AUTH_TOKEN" \
+            --skip-duplicate
