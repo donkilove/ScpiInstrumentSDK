@@ -31,10 +31,7 @@ jobs:
         run: dotnet test Spswj.Instrumentation.sln --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
 
       - name: Pack
-        run: dotnet pack src/Spswj.Instrumentation/Spswj.Instrumentation.csproj \
-          --configuration Release \
-          --no-build \
-          --output ./artifacts
+        run: dotnet pack src/Spswj.Instrumentation/Spswj.Instrumentation.csproj --configuration Release --no-build --output ./artifacts
 
       - name: Push to GitHub Packages
         env:
