@@ -12,6 +12,7 @@
 - 频谱仪常用 SCPI 命令构造。
 - `REAL,32` trace 数据解析，返回最大功率点频率、功率和简单信噪差。
 - 自动重连装饰器：连接类异常时按指数退避自动重连并重放原操作，可配置最大重试次数与退避参数。
+- 可编程 mock 通道：按命令预设文本/二进制响应、记录发送命令、可注入瞬态故障，用于无仪器联调与自动化测试。
 
 ## 项目结构
 
@@ -22,6 +23,7 @@ src/
     TcpInstrumentChannel.cs
     AutoReconnectChannel.cs
     AutoReconnectOptions.cs
+    MockInstrumentChannel.cs
     SpectrumAnalyzers/
       SpectrumAnalyzerCommands.cs
       TraceDataParser.cs
@@ -96,6 +98,22 @@ await channel.ConnectAsync("192.168.1.1", 5025, CancellationToken.None);
 var idn = await channel.QueryAsync(
     SpectrumAnalyzerCommands.QueryIdn(),
     TimeSpan.FromSeconds(3));
+```
+
+无仪器联调 / 测试（mock）：
+
+```csharp
+using var channel = new MockInstrumentChannel();
+channel.AddTextResponse(SpectrumAnalyzerCommands.QueryIdn(), "Agilent Technologies,N9020A,MY51288077,A.14.13");
+channel.AddTextResponse(SpectrumAnalyzerCommands.QueryCenterFrequency(), "2.460000000E+09");
+channel.AddBinaryResponse(SpectrumAnalyzerCommands.QueryTrace1(), new byte[4004]);
+await channel.ConnectAsync("192.168.1.1", 5025, CancellationToken.None);
+
+var idn = await channel.QueryAsync(
+    SpectrumAnalyzerCommands.QueryIdn(),
+    TimeSpan.FromSeconds(1));
+
+// channel.SentCommands 可断言实际发送了哪些命令
 ```
 
 ## 版本口径
