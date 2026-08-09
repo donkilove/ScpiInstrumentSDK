@@ -1,4 +1,4 @@
-namespace Spswj.Instrumentation;
+namespace ScpiInstrument;
 
 public interface IInstrumentChannel
 {

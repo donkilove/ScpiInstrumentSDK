@@ -1,9 +1,9 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using Spswj.Instrumentation.SpectrumAnalyzers;
+using ScpiInstrument.SpectrumAnalyzers;
 
-namespace Spswj.Instrumentation.Tests;
+namespace ScpiInstrument.Tests;
 
 public class TcpInstrumentChannelTests
 {

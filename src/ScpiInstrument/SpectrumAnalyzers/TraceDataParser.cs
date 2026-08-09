@@ -1,4 +1,4 @@
-namespace Spswj.Instrumentation.SpectrumAnalyzers;
+namespace ScpiInstrument.SpectrumAnalyzers;
 
 public static class TraceDataParser
 {

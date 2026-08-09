@@ -24,13 +24,13 @@ jobs:
           dotnet-version: ${{ matrix.dotnet }}
 
       - name: Restore
-        run: dotnet restore Spswj.Instrumentation.sln
+        run: dotnet restore ScpiInstrument.sln
 
       - name: Build
-        run: dotnet build Spswj.Instrumentation.sln --configuration Release --no-restore
+        run: dotnet build ScpiInstrument.sln --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test Spswj.Instrumentation.sln --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
+        run: dotnet test ScpiInstrument.sln --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
 
       - name: Upload test results
         if: always()

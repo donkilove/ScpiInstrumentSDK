@@ -1,6 +1,6 @@
 using System.Net.Sockets;
 
-namespace Spswj.Instrumentation.Tests;
+namespace ScpiInstrument.Tests;
 
 public class AutoReconnectChannelTests
 {

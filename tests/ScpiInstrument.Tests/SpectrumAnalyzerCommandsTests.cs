@@ -1,7 +1,7 @@
 using System.Globalization;
-using Spswj.Instrumentation.SpectrumAnalyzers;
+using ScpiInstrument.SpectrumAnalyzers;
 
-namespace Spswj.Instrumentation.Tests;
+namespace ScpiInstrument.Tests;
 
 public class SpectrumAnalyzerCommandsTests
 {

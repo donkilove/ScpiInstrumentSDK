@@ -1,7 +1,7 @@
 using System.IO;
 using System.Net.Sockets;
 
-namespace Spswj.Instrumentation;
+namespace ScpiInstrument;
 
 /// <summary>
 /// 自动重连装饰器：包装任意 <see cref="IInstrumentChannel"/>，在连接类异常时自动重连并重放原操作。

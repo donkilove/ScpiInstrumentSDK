@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace Spswj.Instrumentation.SpectrumAnalyzers;
+namespace ScpiInstrument.SpectrumAnalyzers;
 
 public static class SpectrumAnalyzerCommands
 {

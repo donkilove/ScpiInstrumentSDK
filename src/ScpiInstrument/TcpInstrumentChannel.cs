@@ -3,7 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
-namespace Spswj.Instrumentation;
+namespace ScpiInstrument;
 
 public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
 {

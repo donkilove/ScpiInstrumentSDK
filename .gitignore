@@ -21,3 +21,6 @@ artifacts/
 
 # Logs
 *.log
+
+# Reasonix desktop artifacts
+.reasonix/

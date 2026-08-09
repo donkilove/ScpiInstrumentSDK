@@ -9,13 +9,13 @@
     <FileVersion>0.2.0.0</FileVersion>
     <InformationalVersion>v0.2.0</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
-    <PackageId>Spswj.Instrumentation</PackageId>
+    <PackageId>ScpiInstrument</PackageId>
     <Authors>donkilove</Authors>
     <Description>A .NET library for TCP/IP + SCPI instrument communication and spectrum-analyzer trace parsing.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <RepositoryType>git</RepositoryType>
-    <RepositoryUrl>https://github.com/donkilove/Spswj.Instrumentation</RepositoryUrl>
+    <RepositoryUrl>https://github.com/donkilove/ScpiInstrument</RepositoryUrl>
     <PackageTags>scpi;instrument;spectrum-analyzer;tcp;iot;test</PackageTags>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>

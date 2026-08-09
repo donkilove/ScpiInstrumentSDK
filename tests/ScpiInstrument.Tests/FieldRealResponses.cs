@@ -1,9 +1,9 @@
-using Spswj.Instrumentation.SpectrumAnalyzers;
+using ScpiInstrument.SpectrumAnalyzers;
 
-namespace Spswj.Instrumentation.Tests;
+namespace ScpiInstrument.Tests;
 
 /// <summary>
-/// 固化的真实频谱仪现场数据（来源：SPSWJ docs/现场验证/现场频谱仪验证报告.md，2026-06-11）。
+/// 固化的真实频谱仪现场数据（来源：内部生产测试主机的现场验证报告，2026-06-11）。
 /// 设备：Agilent N9020A（MY51288077），地址 192.168.1.1:5025。
 /// 用途：让离线测试尽量贴近真机行为，作为协议解析与 trace 解析的权威基线。
 /// </summary>

@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
 
-namespace Spswj.Instrumentation;
+namespace ScpiInstrument;
 
 /// <summary>
 /// 可编程的假仪器通道：按命令返回预设响应，并记录所有发送的命令。

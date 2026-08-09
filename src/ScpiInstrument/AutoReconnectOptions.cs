@@ -1,4 +1,4 @@
-namespace Spswj.Instrumentation;
+namespace ScpiInstrument;
 
 /// <summary>
 /// 自动重连策略配置。

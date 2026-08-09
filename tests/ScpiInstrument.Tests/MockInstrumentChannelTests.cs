@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Spswj.Instrumentation.Tests;
+namespace ScpiInstrument.Tests;
 
 public class MockInstrumentChannelTests
 {

@@ -1,15 +1,31 @@
-# Spswj.Instrumentation
+# ScpiInstrument
 
-[![NuGet](https://img.shields.io/badge/NuGet-0.2.0-blue)](https://github.com/donkilove/Spswj.Instrumentation/pkgs/nuget/Spswj.Instrumentation)
-[![CI](https://github.com/donkilove/Spswj.Instrumentation/actions/workflows/ci.yml/badge.svg)](https://github.com/donkilove/Spswj.Instrumentation/actions/workflows/ci.yml)
+[![NuGet](https://img.shields.io/badge/NuGet-0.2.0-blue)](https://github.com/donkilove/ScpiInstrument/pkgs/nuget/ScpiInstrument)
+[![CI](https://github.com/donkilove/ScpiInstrument/actions/workflows/ci.yml/badge.svg)](https://github.com/donkilove/ScpiInstrument/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![TargetFramework](https://img.shields.io/badge/.NET-8.0-512BD4)](https://dotnet.microsoft.com/download/dotnet/8.0)
 
 **English** · [简体中文](README.zh-CN.md)
 
-A .NET library for TCP/IP + SCPI instrument communication and spectrum-analyzer trace parsing.
+A .NET 8 library for communicating with test and measurement instruments over TCP/IP using SCPI, including spectrum-analyzer trace parsing.
 
-Extracted from the production test host `SPSWJ v0.1.3` and published as a reusable component, so multiple test-host applications can share one well-tested communication stack instead of duplicating source code.
+Extracted from an internal production test host and published as a reusable component, so multiple test-host applications can share one well-tested communication stack instead of duplicating source code.
+
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Usage](#usage)
+  - [Real instrument (TCP/IP + SCPI)](#1-real-instrument-tcpip--scpi)
+  - [Auto-reconnect (optional)](#2-auto-reconnect-optional)
+  - [Mock instrument (no hardware needed)](#3-mock-instrument-no-hardware-needed)
+- [API Overview](#api-overview)
+- [Project Structure](#project-structure)
+- [Validation](#validation)
+- [Versioning](#versioning)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Features
 
@@ -26,7 +42,7 @@ Extracted from the production test host `SPSWJ v0.1.3` and published as a reusab
 The package is published to GitHub Packages (NuGet feed):
 
 ```bash
-dotnet add package Spswj.Instrumentation --version 0.2.0 \
+dotnet add package ScpiInstrument --version 0.2.0 \
   --source "https://nuget.pkg.github.com/donkilove/index.json"
 ```
 
@@ -38,10 +54,10 @@ Requirements: .NET 8 SDK
 
 ```bash
 # Build
-dotnet build Spswj.Instrumentation.sln
+dotnet build ScpiInstrument.sln
 
 # Test
-dotnet test Spswj.Instrumentation.sln
+dotnet test ScpiInstrument.sln
 ```
 
 ## Usage
@@ -49,8 +65,8 @@ dotnet test Spswj.Instrumentation.sln
 ### 1. Real instrument (TCP/IP + SCPI)
 
 ```csharp
-using Spswj.Instrumentation;
-using Spswj.Instrumentation.SpectrumAnalyzers;
+using ScpiInstrument;
+using ScpiInstrument.SpectrumAnalyzers;
 
 using var channel = new TcpInstrumentChannel();
 await channel.ConnectAsync("192.168.1.1", 5025, CancellationToken.None);
@@ -112,24 +128,6 @@ var idn = await channel.QueryAsync(
 // channel.SentCommands asserts which commands were actually sent
 ```
 
-## Project Structure
-
-```text
-src/
-  Spswj.Instrumentation/
-    IInstrumentChannel.cs          # channel abstraction
-    TcpInstrumentChannel.cs        # real TCP/IP + SCPI channel
-    AutoReconnectChannel.cs        # reconnect decorator
-    AutoReconnectOptions.cs        # reconnect configuration
-    MockInstrumentChannel.cs       # programmable fake instrument
-    SpectrumAnalyzers/
-      SpectrumAnalyzerCommands.cs  # SCPI command builder
-      TraceDataParser.cs           # REAL,32 trace parsing
-      TraceAnalysisResult.cs       # parsed trace result record
-tests/
-  Spswj.Instrumentation.Tests/     # xUnit suite (33 tests)
-```
-
 ## API Overview
 
 | Type | Purpose |
@@ -143,14 +141,37 @@ tests/
 | `TraceDataParser` | Parses `REAL,32` trace bytes into peak frequency, power, and SNR delta |
 | `TraceAnalysisResult` | Immutable result record |
 
+## Project Structure
+
+```text
+src/
+  ScpiInstrument/
+    IInstrumentChannel.cs          # channel abstraction
+    TcpInstrumentChannel.cs        # real TCP/IP + SCPI channel
+    AutoReconnectChannel.cs        # reconnect decorator
+    AutoReconnectOptions.cs        # reconnect configuration
+    MockInstrumentChannel.cs       # programmable fake instrument
+    SpectrumAnalyzers/
+      SpectrumAnalyzerCommands.cs  # SCPI command builder
+      TraceDataParser.cs           # REAL,32 trace parsing
+      TraceAnalysisResult.cs       # parsed trace result record
+tests/
+  ScpiInstrument.Tests/            # xUnit suite (33 tests)
+```
+
 ## Validation
 
 - 33 xUnit tests covering protocol parsing, split packets, error paths, reconnect behavior, and mock scenarios.
 - Field fixtures from a real Agilent N9020A (captured 2026-06-11) are embedded in the test suite, so offline tests closely mirror real-device behavior.
+- Continuous integration runs the full build and test suite on every push and pull request (`.github/workflows/ci.yml`).
 
 ## Versioning
 
-`v0.1.x` was the incubator snapshot extracted from `SPSWJ v0.1.3`. `v0.2.0` adds auto-reconnect, the mock channel, and field-data fixtures, and is published as a NuGet package. The API is not yet committed to long-term stability; stricter compatibility management will begin once multiple test hosts actually consume the library.
+`v0.1.x` was the incubator snapshot extracted from an internal production test host. `v0.2.0` adds auto-reconnect, the mock channel, and field-data fixtures, and is the first release published under the `ScpiInstrument` name as a NuGet package. The API is not yet committed to long-term stability; stricter compatibility management will begin once multiple test hosts actually consume the library.
+
+## Contributing
+
+Contributions are welcome. Please open an issue to discuss changes before submitting a pull request, and make sure the existing test suite passes.
 
 ## License
 

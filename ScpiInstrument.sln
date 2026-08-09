@@ -5,11 +5,11 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{93A92D64-907A-4EE7-9C6A-4D1122726410}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Spswj.Instrumentation", "src\Spswj.Instrumentation\Spswj.Instrumentation.csproj", "{3DC82495-E340-4AC8-9769-3C75632C1F73}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ScpiInstrument", "src\ScpiInstrument\ScpiInstrument.csproj", "{3DC82495-E340-4AC8-9769-3C75632C1F73}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{709D1396-FDC6-42F9-9FB7-86467C25AF30}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Spswj.Instrumentation.Tests", "tests\Spswj.Instrumentation.Tests\Spswj.Instrumentation.Tests.csproj", "{7431810D-2673-49FB-9183-E5CBD1232BF5}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ScpiInstrument.Tests", "tests\ScpiInstrument.Tests\ScpiInstrument.Tests.csproj", "{7431810D-2673-49FB-9183-E5CBD1232BF5}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

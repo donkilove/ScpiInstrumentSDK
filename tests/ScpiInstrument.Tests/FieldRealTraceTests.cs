@@ -1,12 +1,12 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using Spswj.Instrumentation.SpectrumAnalyzers;
+using ScpiInstrument.SpectrumAnalyzers;
 
-namespace Spswj.Instrumentation.Tests;
+namespace ScpiInstrument.Tests;
 
 /// <summary>
-/// 基于 SPSWJ 现场验证报告（2026-06-11，真实 Agilent N9020A）的离线测试：
+/// 基于内部生产测试主机的现场验证报告（2026-06-11，真实 Agilent N9020A）的离线测试：
 /// 模拟真机响应序列，并校验解析结果复现现场实测读数。
 /// </summary>
 public class FieldRealTraceTests
