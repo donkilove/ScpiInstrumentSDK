@@ -170,6 +170,13 @@ public class AutoReconnectChannelTests
             return Task.CompletedTask;
         }
 
+        public Task SendManyAsync(IReadOnlyList<string> commands, CancellationToken ct = default)
+        {
+            OperationCalls++;
+            MaybeFail();
+            return Task.CompletedTask;
+        }
+
         public Task<byte[]> QueryBinaryAsync(
             string scpiCommand,
             int expectedBytes,

@@ -9,6 +9,7 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
 {
     private TcpClient? _client;
     private NetworkStream? _stream;
+    private StreamReader? _reader;   // 连接生命周期内复用：避免每次查询新建缓冲导致粘包残留/字节丢失
     private readonly Encoding _encoding = Encoding.ASCII;
     private readonly object _lock = new();
     private bool _disposed;
@@ -45,6 +46,7 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
             await _client.ConnectAsync(host, port).WaitAsync(timeoutCts.Token);
             _stream = _client.GetStream();
             _stream.ReadTimeout = 5000;
+            _reader = new StreamReader(_stream, _encoding, leaveOpen: true);
         }
         catch
         {
@@ -59,6 +61,7 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
     {
         if (_stream is not { CanWrite: true }) throw new InvalidOperationException("未连接仪器");
         if (_disposed) throw new ObjectDisposedException(nameof(TcpInstrumentChannel));
+        if (_reader is null) throw new InvalidOperationException("未连接仪器");
 
         var cmd = scpiCommand + "\n";
         var buffer = _encoding.GetBytes(cmd);
@@ -70,11 +73,10 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
             _stream.Flush();
         }
 
-        using var reader = new StreamReader(_stream, _encoding, leaveOpen: true);
         using var timeoutCts = new CancellationTokenSource(timeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
-        var response = await reader.ReadLineAsync(linkedCts.Token);
+        var response = await _reader.ReadLineAsync(linkedCts.Token);
         return response ?? string.Empty;
     }
 
@@ -85,6 +87,24 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
 
         var cmd = scpiCommand + "\n";
         var buf = _encoding.GetBytes(cmd);
+
+        lock (_lock)
+        {
+            if (_stream is not { CanWrite: true }) throw new InvalidOperationException("连接已断开");
+            _stream.Write(buf, 0, buf.Length);
+            _stream.Flush();
+        }
+
+        await Task.CompletedTask;
+    }
+
+    public async Task SendManyAsync(IReadOnlyList<string> commands, CancellationToken ct = default)
+    {
+        if (_stream is not { CanWrite: true }) throw new InvalidOperationException("未连接仪器");
+        if (_disposed) throw new ObjectDisposedException(nameof(TcpInstrumentChannel));
+
+        // 合并为一条 TCP 消息（\n 分隔）：SCPI 仪器顺序执行，省去逐条往返
+        var buf = _encoding.GetBytes(string.Join('\n', commands) + "\n");
 
         lock (_lock)
         {
@@ -228,6 +248,7 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
         {
             try
             {
+                _reader?.Dispose();
                 _stream?.Close();
                 _client?.Close();
             }
@@ -236,6 +257,7 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
             }
             finally
             {
+                _reader = null;
                 _stream = null;
                 _client = null;
             }
@@ -257,6 +279,7 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
         {
         }
 
+        _reader?.Dispose();
         _stream?.Dispose();
         _client?.Dispose();
     }

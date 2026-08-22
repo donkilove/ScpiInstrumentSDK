@@ -247,6 +247,67 @@ public class TcpInstrumentChannelTests
         await serverTask;
     }
 
+    [Fact]
+    public async Task SendManyAsync_writes_all_commands_in_one_message()
+    {
+        var commands = new[] { ":FREQ:CENT 2460 MHz", ":FREQ:SPAN 100 MHz", "DISP:WIND:TRAC:Y:RLEV 20" };
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+        var serverTask = Task.Run(async () =>
+        {
+            using var client = await listener.AcceptTcpClientAsync();
+            await using var stream = client.GetStream();
+            // 一次 TCP 读应收到全部命令（合并发送，\n 分隔）
+            var received = await ReadAsciiLineAsync(stream);
+            Assert.Equal(commands[0], received);
+            Assert.Equal(commands[1], await ReadAsciiLineAsync(stream));
+            Assert.Equal(commands[2], await ReadAsciiLineAsync(stream));
+        });
+
+        using var channel = new TcpInstrumentChannel();
+        await channel.ConnectAsync(IPAddress.Loopback.ToString(), port, CancellationToken.None);
+
+        await channel.SendManyAsync(commands, CancellationToken.None);
+        await serverTask;
+    }
+
+    [Fact]
+    public async Task QueryAsync_reuses_reader_across_queries_no_byte_loss()
+    {
+        // 稳定：StreamReader 复用（成员级），连续文本查询不得因缓冲重建丢失字节
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+        var serverTask = Task.Run(async () =>
+        {
+            using var client = await listener.AcceptTcpClientAsync();
+            await using var stream = client.GetStream();
+            for (var i = 0; i < 3; i++)
+            {
+                _ = await ReadAsciiLineAsync(stream);
+                // 分两个 TCP 段发送（部分字节先到，考验读取缓冲）
+                await stream.WriteAsync(Encoding.ASCII.GetBytes($"RESP-{i}"));
+                await stream.FlushAsync();
+                await stream.WriteAsync(Encoding.ASCII.GetBytes($"-TAIL\n"));
+                await stream.FlushAsync();
+            }
+        });
+
+        using var channel = new TcpInstrumentChannel();
+        await channel.ConnectAsync(IPAddress.Loopback.ToString(), port, CancellationToken.None);
+
+        for (var i = 0; i < 3; i++)
+        {
+            var r = await channel.QueryAsync($"QUERY{i}", TimeSpan.FromSeconds(2));
+            Assert.Equal($"RESP-{i}-TAIL", r);
+        }
+
+        await serverTask;
+    }
+
     private static async Task<string> ReadAsciiLineAsync(Stream stream)
     {
         var bytes = new List<byte>();

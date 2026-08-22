@@ -112,6 +112,18 @@ public sealed class MockInstrumentChannel : IInstrumentChannel, IDisposable
         return Task.CompletedTask;
     }
 
+    public Task SendManyAsync(IReadOnlyList<string> commands, CancellationToken ct = default)
+    {
+        ThrowIfNotConnected();
+        foreach (var command in commands)
+        {
+            RecordCommand(command);
+            ThrowIfTransient();
+        }
+
+        return Task.CompletedTask;
+    }
+
     public Task<byte[]> QueryBinaryAsync(
         string scpiCommand,
         int expectedBytes,

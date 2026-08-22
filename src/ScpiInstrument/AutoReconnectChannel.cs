@@ -37,6 +37,9 @@ public sealed class AutoReconnectChannel : IInstrumentChannel, IDisposable
     public Task SendAsync(string scpiCommand, CancellationToken ct = default)
         => ExecuteWithReconnectAsync(token => _inner.SendAsync(scpiCommand, token), ct);
 
+    public Task SendManyAsync(IReadOnlyList<string> commands, CancellationToken ct = default)
+        => ExecuteWithReconnectAsync(token => _inner.SendManyAsync(commands, token), ct);
+
     public Task<byte[]> QueryBinaryAsync(
         string scpiCommand,
         int expectedBytes,
