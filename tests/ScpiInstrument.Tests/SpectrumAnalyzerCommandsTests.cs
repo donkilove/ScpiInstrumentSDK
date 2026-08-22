@@ -28,6 +28,25 @@ public class SpectrumAnalyzerCommandsTests
         Assert.Equal(":TRAC? TRACE1", SpectrumAnalyzerCommands.QueryTrace1());
     }
 
+    [Fact]
+    public void LinkQueries_joins_with_semicolons_and_adds_leading_colons()
+    {
+        // 链接查询：; 分隔；后续命令必须带前导冒号（真机 N9020A 验证：
+        // DISP:... 不带冒号会被当作前一命令的子命令报 -113 Undefined header）
+        var linked = SpectrumAnalyzerCommands.LinkQueries(
+            SpectrumAnalyzerCommands.QueryCenterFrequency(),
+            SpectrumAnalyzerCommands.QuerySpan(),
+            SpectrumAnalyzerCommands.QueryRefLevel());
+
+        Assert.Equal(":FREQ:CENT?;:FREQ:SPAN?;:DISP:WIND:TRAC:Y:RLEV?", linked);
+    }
+
+    [Fact]
+    public void LinkQueries_single_query_returns_as_is()
+    {
+        Assert.Equal(":FREQ:CENT?", SpectrumAnalyzerCommands.LinkQueries(":FREQ:CENT?"));
+    }
+
     private sealed class TemporaryCulture : IDisposable
     {
         private readonly CultureInfo _previousCulture;
