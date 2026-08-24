@@ -1,13 +1,13 @@
 # ScpiInstrument
 
-[![NuGet](https://img.shields.io/badge/NuGet-0.3.1-blue)](https://github.com/donkilove/ScpiInstrument/pkgs/nuget/ScpiInstrument)
+[![NuGet](https://img.shields.io/badge/NuGet-0.4.0-blue)](https://github.com/donkilove/ScpiInstrument/pkgs/nuget/ScpiInstrument)
 [![CI](https://github.com/donkilove/ScpiInstrument/actions/workflows/ci.yml/badge.svg)](https://github.com/donkilove/ScpiInstrument/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![TargetFramework](https://img.shields.io/badge/.NET-8.0-512BD4)](https://dotnet.microsoft.com/download/dotnet/8.0)
+[![TargetFramework](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/download/dotnet/10.0)
 
 **English** · [简体中文](README.zh-CN.md)
 
-A .NET 8 library for communicating with test and measurement instruments over TCP/IP using SCPI, including spectrum-analyzer trace parsing.
+A .NET 10 library for communicating with test and measurement instruments over TCP/IP using SCPI, including spectrum-analyzer trace parsing.
 
 Extracted from an internal production test host and published as a reusable component, so multiple test-host applications can share one well-tested communication stack instead of duplicating source code.
 
@@ -42,7 +42,7 @@ Extracted from an internal production test host and published as a reusable comp
 The package is published to GitHub Packages (NuGet feed):
 
 ```bash
-dotnet add package ScpiInstrument --version 0.3.1 \
+dotnet add package ScpiInstrument --version 0.4.0 \
   --source "https://nuget.pkg.github.com/donkilove/index.json"
 ```
 
@@ -50,7 +50,7 @@ dotnet add package ScpiInstrument --version 0.3.1 \
 
 ## Quick Start
 
-Requirements: .NET 8 SDK
+Requirements: .NET 10 SDK
 
 ```bash
 # Build
@@ -167,7 +167,7 @@ tests/
 
 ## Versioning
 
-`v0.1.x` was the incubator snapshot extracted from an internal production test host. `v0.2.0` adds auto-reconnect, the mock channel, and field-data fixtures, and is the first release published under the `ScpiInstrument` name as a NuGet package. `v0.3.0` adds `SendManyAsync` (batch command sending to cut TCP round-trips) and reuses a single `StreamReader` per connection to eliminate buffered-byte loss across queries. `v0.3.1` adds `SpectrumAnalyzerCommands.LinkQueries` for combined SCPI queries (one round-trip, multiple values). The API is not yet committed to long-term stability; stricter compatibility management will begin once multiple test hosts actually consume the library.
+`v0.4.0` upgrades the target framework to .NET 10 (TFM, CI, dependencies); all 37 tests remain green. `v0.1.x` was the incubator snapshot extracted from an internal production test host. `v0.2.0` adds auto-reconnect, the mock channel, and field-data fixtures, and is the first release published under the `ScpiInstrument` name as a NuGet package. `v0.3.0` adds `SendManyAsync` (batch command sending to cut TCP round-trips) and reuses a single `StreamReader` per connection to eliminate buffered-byte loss across queries. `v0.3.1` adds `SpectrumAnalyzerCommands.LinkQueries` for combined SCPI queries (one round-trip, multiple values). The API is not yet committed to long-term stability; stricter compatibility management will begin once multiple test hosts actually consume the library.
 
 ## Contributing
 
