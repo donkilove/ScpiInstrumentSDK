@@ -1,6 +1,6 @@
 # ScpiInstrument
 
-[![NuGet](https://img.shields.io/badge/NuGet-0.4.0-blue)](https://github.com/donkilove/ScpiInstrument/pkgs/nuget/ScpiInstrument)
+[![NuGet](https://img.shields.io/badge/NuGet-0.4.1-blue)](https://github.com/donkilove/ScpiInstrument/pkgs/nuget/ScpiInstrument)
 [![CI](https://github.com/donkilove/ScpiInstrument/actions/workflows/ci.yml/badge.svg)](https://github.com/donkilove/ScpiInstrument/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![TargetFramework](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/download/dotnet/10.0)
@@ -42,7 +42,7 @@ Extracted from an internal production test host and published as a reusable comp
 The package is published to GitHub Packages (NuGet feed):
 
 ```bash
-dotnet add package ScpiInstrument --version 0.4.0 \
+dotnet add package ScpiInstrument --version 0.4.1 \
   --source "https://nuget.pkg.github.com/donkilove/index.json"
 ```
 
@@ -167,7 +167,7 @@ tests/
 
 ## Versioning
 
-`v0.4.0` upgrades the target framework to .NET 10 (TFM, CI, dependencies); all 37 tests remain green. `v0.1.x` was the incubator snapshot extracted from an internal production test host. `v0.2.0` adds auto-reconnect, the mock channel, and field-data fixtures, and is the first release published under the `ScpiInstrument` name as a NuGet package. `v0.3.0` adds `SendManyAsync` (batch command sending to cut TCP round-trips) and reuses a single `StreamReader` per connection to eliminate buffered-byte loss across queries. `v0.3.1` adds `SpectrumAnalyzerCommands.LinkQueries` for combined SCPI queries (one round-trip, multiple values). The API is not yet committed to long-term stability; stricter compatibility management will begin once multiple test hosts actually consume the library.
+`v0.4.0` upgrades the target framework to .NET 10 (TFM, CI, dependencies); all 37 tests remain green. `v0.1.x` was the incubator snapshot extracted from an internal production test host. `v0.2.0` adds auto-reconnect, the mock channel, and field-data fixtures, and is the first release published under the `ScpiInstrument` name as a NuGet package. `v0.3.0` adds `SendManyAsync` (batch command sending to cut TCP round-trips) and reuses a single `StreamReader` per connection to eliminate buffered-byte loss across queries. `v0.3.1` adds `SpectrumAnalyzerCommands.LinkQueries` for combined SCPI queries (one round-trip, multiple values). `v0.4.1` is an audit-fix batch (SC-01~12): per-operation serialization (no cross-response under concurrency), unified byte-level reading (no StreamReader/bare-stream mixing), typed `ConnectionClosedException` for EOF (now triggers auto-reconnect), reconnect mutex (no reconnect storms), NaN/Infinity trace rejection, jittered backoff, `SplitLinkedResponses` for linked queries, and hardened Connect/Dispose paths (49 tests green). The API is not yet committed to long-term stability; stricter compatibility management will begin once multiple test hosts actually consume the library.
 
 ## Contributing
 
