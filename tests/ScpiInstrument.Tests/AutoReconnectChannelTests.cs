@@ -130,24 +130,124 @@ public class AutoReconnectChannelTests
         Assert.Equal(1, inner.ReconnectCalls);
     }
 
+    // ---- 审计 SC-03：ConnectionClosedException（EOF）触发重连（类型判定，不依赖消息文本） ----
+
+    [Fact]
+    public async Task Query_reconnects_on_connection_closed_exception()
+    {
+        var inner = new StubChannel
+        {
+            TransientFailure = new ConnectionClosedException("响应流已结束：连接已关闭")
+        };
+
+        using var channel = new AutoReconnectChannel(inner, new AutoReconnectOptions
+        {
+            InitialBackoff = TimeSpan.Zero
+        });
+        await channel.ConnectAsync("192.168.1.1", 5025, CancellationToken.None);
+
+        var result = await channel.QueryAsync("SYST:IDN?", TimeSpan.FromSeconds(1));
+
+        Assert.Equal("OK", result);
+        Assert.Equal(1, inner.ReconnectCalls);
+    }
+
+    // ---- 审计 SC-05：并发失败操作的重连互斥串行化（防连接风暴） ----
+
+    [Fact]
+    public async Task Concurrent_failures_reconnect_serially()
+    {
+        var inner = new StubChannel
+        {
+            FailTimes = 3,   // 并发 3 个操作各自失败一次
+            Failure = new ConnectionClosedException("响应流已结束：连接已关闭")
+        };
+
+        using var channel = new AutoReconnectChannel(inner, new AutoReconnectOptions
+        {
+            InitialBackoff = TimeSpan.Zero
+        });
+        await channel.ConnectAsync("192.168.1.1", 5025, CancellationToken.None);
+
+        await Task.WhenAll(
+            channel.QueryAsync("SYST:IDN?", TimeSpan.FromSeconds(2)),
+            channel.QueryAsync("SYST:IDN?", TimeSpan.FromSeconds(2)),
+            channel.QueryAsync("SYST:IDN?", TimeSpan.FromSeconds(2)));
+
+        Assert.Equal(1, inner.MaxConcurrentConnects);   // 重连互斥：任意时刻最多 1 个连接建立（修复前并发 → 3）
+        Assert.Equal(6, inner.OperationCalls);          // 3 次失败 + 3 次重放
+    }
+
+    // ---- 审计 SC-10：退避抖动（±25% 内、有随机性） ----
+
+    [Fact]
+    public void BackoffFor_applies_jitter_within_range()
+    {
+        var channel = new AutoReconnectChannel(new StubChannel(), new AutoReconnectOptions
+        {
+            InitialBackoff = TimeSpan.FromMilliseconds(100),
+            MaxBackoff = TimeSpan.FromMilliseconds(1000)
+        });
+
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            for (var i = 0; i < 20; i++)
+            {
+                var backoff = channel.BackoffFor(attempt);
+                var baseMs = Math.Min(100 * Math.Pow(2, attempt - 1), 1000);
+                Assert.InRange(backoff.TotalMilliseconds, baseMs * 0.75, baseMs * 1.25);
+            }
+        }
+    }
+
     /// <summary>可注入故障的假通道：前 N 次操作抛指定异常，之后恢复正常。</summary>
     private sealed class StubChannel : IInstrumentChannel
     {
-        public Exception? TransientFailure;
+        public Exception? TransientFailure;   // 只失败一次
+        public Exception? Failure;            // 与 FailTimes 配合：失败 N 次
+        public int FailTimes;
         public bool AlwaysFail;
         public int OperationCalls;
         public int ReconnectCalls;
         public bool Connected;
+        private int _failCount;
+        private int _activeConnects;
+        private int _maxConcurrentConnects;
+
+        /// <summary>历史最大并发连接建立数（SC-05 互斥验证：串行化时恒为 1）</summary>
+        public int MaxConcurrentConnects => Volatile.Read(ref _maxConcurrentConnects);
 
         public bool IsConnected => Connected;
 
-        public Task ConnectAsync(string host, int port, CancellationToken ct)
+        public async Task ConnectAsync(string host, int port, CancellationToken ct)
         {
-            if (Connected)
-                ReconnectCalls++; // 已连接状态下再次 ConnectAsync 视为自动重连
+            var active = Interlocked.Increment(ref _activeConnects);
+            UpdateMax(active);
+            try
+            {
+                if (Connected)
+                    ReconnectCalls++; // 已连接状态下再次 ConnectAsync 视为自动重连
 
-            Connected = true;
-            return Task.CompletedTask;
+                await Task.Delay(50, ct);   // 放大并发重叠窗口（SC-05 串行化验证）
+                Connected = true;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _activeConnects);
+            }
+        }
+
+        private void UpdateMax(int current)
+        {
+            while (true)
+            {
+                var observed = Volatile.Read(ref _maxConcurrentConnects);
+                if (current <= observed
+                    || Interlocked.CompareExchange(ref _maxConcurrentConnects, current, observed) == observed)
+                {
+                    return;
+                }
+            }
         }
 
         public Task DisconnectAsync()
@@ -198,6 +298,11 @@ public class AutoReconnectChannelTests
                 var failure = TransientFailure;
                 TransientFailure = null; // 只失败一次，之后恢复
                 throw failure;
+            }
+
+            if (Failure is not null && Interlocked.Increment(ref _failCount) <= FailTimes)
+            {
+                throw Failure;   // 失败 N 次（并发场景共享计数，确定性）
             }
         }
     }

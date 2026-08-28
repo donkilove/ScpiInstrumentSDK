@@ -27,35 +27,46 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
         if (port <= 0 || port > 65535)
             throw new ArgumentOutOfRangeException(nameof(port), "端口必须在 1-65535 范围内");
 
-        lock (_lock)
-        {
-            if (_client is { Connected: true })
-            {
-                try { _stream?.Close(); } catch { }
-                try { _client?.Close(); } catch { }
-                _stream = null;
-                _client = null;
-            }
-        }
-
-        _client = new TcpClient();
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(5));
-
+        // 审计 SC-04：连接建立整体串行化——并发 ConnectAsync 时"关旧+新建+赋值"原子，
+        // 消除状态替换竞态（此前新连接创建/赋值在锁外，后完成的覆盖先完成的导致连接泄漏）
+        await _queryGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            await _client.ConnectAsync(host, port).WaitAsync(timeoutCts.Token);
-            _stream = _client.GetStream();
-            _stream.ReadTimeout = 5000;
-            // 审计 SC-02：不再使用 StreamReader——其内部缓冲会吞掉文本行之后的字节，
-            // 与 QueryBinaryAsync 的裸流读取交错时丢字节；统一字节级读取
+            lock (_lock)
+            {
+                if (_client is { Connected: true })
+                {
+                    try { _stream?.Close(); } catch { }
+                    try { _client?.Close(); } catch { }
+                    _stream = null;
+                    _client = null;
+                }
+            }
+
+            var newClient = new TcpClient();
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(5));
+
+            try
+            {
+                await newClient.ConnectAsync(host, port).WaitAsync(timeoutCts.Token);
+                var newStream = newClient.GetStream();
+                newStream.ReadTimeout = 5000;
+                newStream.WriteTimeout = 5000;   // 审计 SC-11：同步写超时（防写阻塞无限挂起）
+                // 审计 SC-02：不再使用 StreamReader——其内部缓冲会吞掉文本行之后的字节，
+                // 与 QueryBinaryAsync 的裸流读取交错时丢字节；统一字节级读取
+                _client = newClient;
+                _stream = newStream;
+            }
+            catch
+            {
+                newClient.Dispose();
+                throw;
+            }
         }
-        catch
+        finally
         {
-            _client?.Dispose();
-            _client = null;
-            _stream = null;
-            throw;
+            _queryGate.Release();
         }
     }
 
@@ -158,6 +169,9 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
         await _queryGate.WaitAsync(linkedCts.Token).ConfigureAwait(false);
         try
         {
+            // 审计 SC-06：_stream 防御守卫（未连接/连接已断时不抛裸 NRE）
+            if (_stream is not { CanWrite: true }) throw new InvalidOperationException("未连接仪器");
+
             var cmd = scpiCommand + "\n";
             var buf = _encoding.GetBytes(cmd);
             lock (_lock)
@@ -294,7 +308,7 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
         var buffer = new byte[1];
         var read = await stream.ReadAsync(buffer, 0, 1, ct);
         if (read == 0)
-            throw new InvalidOperationException("未收到二进制数据");
+            throw new ConnectionClosedException("响应流已结束：连接已关闭");   // 审计 SC-03：EOF 抛连接类异常（触发重连）
 
         return buffer[0];
     }
@@ -308,7 +322,7 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
         {
             var read = await stream.ReadAsync(buffer, totalRead, length - totalRead, ct);
             if (read == 0)
-                throw new InvalidOperationException($"数据不完整: 期望 {length} 字节，实际收到 {totalRead} 字节");
+                throw new ConnectionClosedException($"数据不完整: 期望 {length} 字节，实际收到 {totalRead} 字节（连接已关闭）");   // 审计 SC-03：中途 EOF 属连接关闭
 
             totalRead += read;
         }
@@ -345,6 +359,8 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
 
         try
         {
+            // 审计 SC-11：DisconnectAsync 为纯同步清理（无真实异步等待），
+            // sync-over-async 无死锁风险（无 SynchronizationContext 依赖）
             DisconnectAsync().GetAwaiter().GetResult();
         }
         catch

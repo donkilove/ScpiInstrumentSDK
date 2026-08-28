@@ -147,7 +147,7 @@ public class TcpInstrumentChannelTests
         using var channel = new TcpInstrumentChannel();
         await channel.ConnectAsync(IPAddress.Loopback.ToString(), port, CancellationToken.None);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<ConnectionClosedException>(() =>
             channel.QueryBinaryAsync(
                 SpectrumAnalyzerCommands.QueryTrace1(),
                 expectedBytes: 4096,
@@ -385,6 +385,42 @@ public class TcpInstrumentChannelTests
         Assert.Equal("RESP-A", text);
         Assert.Equal(payload, binary);   // 修复前：块头被 StreamReader 吞掉 → 挂起/异常
         await serverTask;
+    }
+
+    // ---- 审计 SC-03：EOF 抛连接类异常（不再静默空串） ----
+
+    [Fact]
+    public async Task QueryAsync_remote_closes_connection_throws_connection_closed()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+        var serverTask = Task.Run(async () =>
+        {
+            using var client = await listener.AcceptTcpClientAsync();
+            await using var stream = client.GetStream();
+            _ = await ReadAsciiLineAsync(stream);
+            // 不回复直接关闭（EOF）
+        });
+
+        using var channel = new TcpInstrumentChannel();
+        await channel.ConnectAsync(IPAddress.Loopback.ToString(), port, CancellationToken.None);
+
+        await Assert.ThrowsAsync<ConnectionClosedException>(() =>
+            channel.QueryAsync("CMD1", TimeSpan.FromSeconds(2)));
+        await serverTask;
+    }
+
+    // ---- 审计 SC-06：QueryBinaryAsync 未连接守卫（不抛裸 NRE） ----
+
+    [Fact]
+    public async Task QueryBinaryAsync_not_connected_throws_invalid_operation()
+    {
+        using var channel = new TcpInstrumentChannel();   // 未连接
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            channel.QueryBinaryAsync(":TRAC?", expectedBytes: 4096, timeout: TimeSpan.FromSeconds(1)));
     }
 
     private static async Task<string> ReadAsciiLineAsync(Stream stream)
