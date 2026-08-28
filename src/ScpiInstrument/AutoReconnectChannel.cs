@@ -112,12 +112,18 @@ public sealed class AutoReconnectChannel : IInstrumentChannel, IDisposable
 
     /// <summary>
     /// 指数退避 + 随机抖动（±25%，Random.Shared 线程安全），防多通道同步重试共振（审计 SC-10）。
-    /// 先 clamp 再构造 TimeSpan（防 attempt 大时 2^n 溢出 OverflowException，审计建议）。
+    /// 先 clamp 再构造 TimeSpan（防 attempt 大时 2^n 溢出 OverflowException，审计建议）；
+    /// 抖动可使结果略超 MaxBackoff（±25% 上限内，属设计意图）。
     /// </summary>
     internal TimeSpan BackoffFor(int attempt)
     {
         var backoffMs = _options.InitialBackoff.TotalMilliseconds * Math.Pow(2, attempt - 1);
         var cappedMs = Math.Min(backoffMs, _options.MaxBackoff.TotalMilliseconds);
+        if (double.IsNaN(cappedMs))   // 病态配置（InitialBackoff=0 且 attempt≥1024 → 0×∞）
+        {
+            cappedMs = _options.MaxBackoff.TotalMilliseconds;
+        }
+
         var jitter = cappedMs * 0.25 * (Random.Shared.NextDouble() * 2 - 1);
         return TimeSpan.FromMilliseconds(Math.Max(0, cappedMs + jitter));
     }
@@ -140,5 +146,9 @@ public sealed class AutoReconnectChannel : IInstrumentChannel, IDisposable
         }
     }
 
-    public void Dispose() => (_inner as IDisposable)?.Dispose();
+    public void Dispose()
+    {
+        _reconnectGate.Dispose();   // 复审提示：随通道释放信号量
+        (_inner as IDisposable)?.Dispose();
+    }
 }

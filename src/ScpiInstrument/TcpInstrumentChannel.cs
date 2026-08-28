@@ -366,8 +366,9 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
 
         try
         {
-            // 审计 SC-11：DisconnectAsync 为纯同步清理（无真实异步等待），
-            // sync-over-async 无死锁风险（无 SynchronizationContext 依赖）
+            // 审计 SC-11/复审：DisconnectAsync 会等待在途操作（有界——查询受超时约束、
+            // 写受 WriteTimeout 约束、连接受连接超时约束）后清理；sync-over-async 无死锁
+            // 风险（无 SynchronizationContext 依赖），但最长阻塞可达在途操作超时
             DisconnectAsync().GetAwaiter().GetResult();
         }
         catch
