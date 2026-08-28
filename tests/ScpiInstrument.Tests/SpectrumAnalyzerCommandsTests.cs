@@ -47,6 +47,19 @@ public class SpectrumAnalyzerCommandsTests
         Assert.Equal(":FREQ:CENT?", SpectrumAnalyzerCommands.LinkQueries(":FREQ:CENT?"));
     }
 
+    // ---- 审计 SC-12：链接查询响应切分（配套 LinkQueries） ----
+
+    [Theory]
+    [InlineData("2460000000;100000000", 2)]
+    [InlineData("2460000000", 1)]
+    [InlineData(" 2460000000 ; 100000000 ", 2)]   // 空白容忍
+    public void SplitLinkedResponses_splits_by_semicolon(string response, int expectedCount)
+    {
+        var parts = SpectrumAnalyzerCommands.SplitLinkedResponses(response);
+
+        Assert.Equal(expectedCount, parts.Count);
+    }
+
     private sealed class TemporaryCulture : IDisposable
     {
         private readonly CultureInfo _previousCulture;

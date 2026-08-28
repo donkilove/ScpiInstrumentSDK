@@ -76,6 +76,28 @@ public class TraceDataParserTests
         Assert.Equal(-10, result.PowerDbm, precision: 6);
     }
 
+    // ---- 审计 SC-08：NaN/Infinity 数据明确失败（不静默产出 NaN 信噪比） ----
+
+    [Fact]
+    public void ParseReal32Trace_rejects_nan_samples()
+    {
+        var data = CreateTrace(-30, float.NaN, -20);
+
+        var ex = Assert.Throws<ArgumentException>(() =>
+            TraceDataParser.ParseReal32Trace(data, 2400e6, 100e6));
+
+        Assert.Contains("NaN/Infinity", ex.Message);
+    }
+
+    [Fact]
+    public void ParseReal32Trace_rejects_infinity_samples()
+    {
+        var data = CreateTrace(-30, float.PositiveInfinity, -20);
+
+        Assert.Throws<ArgumentException>(() =>
+            TraceDataParser.ParseReal32Trace(data, 2400e6, 100e6));
+    }
+
     private static byte[] CreateTrace(params double[] powers)
     {
         var floats = powers.Select(power => (float)power).ToArray();

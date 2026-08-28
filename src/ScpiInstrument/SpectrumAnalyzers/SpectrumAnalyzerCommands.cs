@@ -27,5 +27,15 @@ public static class SpectrumAnalyzerCommands
         return string.Join(';', queries.Select(q => q.StartsWith(':') ? q : ":" + q));
     }
 
+    /// <summary>
+    /// 切分链接查询响应（审计 SC-12：配套 <see cref="LinkQueries"/> 的响应解析）。
+    /// SCPI 数值响应不含 ';'；如响应值本身含分号需另行处理（当前仪器集无此情况）。
+    /// </summary>
+    public static IReadOnlyList<string> SplitLinkedResponses(string response)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+        return response.Split(';', StringSplitOptions.TrimEntries);
+    }
+
     private static string Format(double value) => value.ToString("G", CultureInfo.InvariantCulture);
 }

@@ -17,6 +17,16 @@ public static class TraceDataParser
         var floats = new float[count];
         Buffer.BlockCopy(data, 0, floats, 0, data.Length);
 
+        // 审计 SC-08：任一采样为 NaN/Infinity 时明确失败（信噪比/功率计算会静默产出
+        // NaN 且 maxPower 保持 MinValue 输出 -1.79e308，产线误判）
+        foreach (var value in floats)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value))
+            {
+                throw new ArgumentException($"Trace data 包含 NaN/Infinity：{value}", nameof(data));
+            }
+        }
+
         if (count == 1)
             return new TraceAnalysisResult(centerFreqHz / 1e6, floats[0], 0);
 
