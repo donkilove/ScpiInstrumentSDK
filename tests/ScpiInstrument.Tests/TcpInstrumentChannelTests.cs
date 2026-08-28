@@ -308,6 +308,42 @@ public class TcpInstrumentChannelTests
         await serverTask;
     }
 
+    // ---- 审计 SC-01：并发查询响应串扰（写锁内/读锁外 → 操作级串行化） ----
+
+    /// <summary>
+    /// SC-01: 查询 A（CMD1，仪器不响应 → 超时）与查询 B（CMD2，立即响应）并发——
+    /// 修复前读在锁外：A 的挂起读会抢到先到达的 RESP-B（A 不抛超时、或 B 拿不到响应）；
+    /// 修复后写+读整体串行化：A 超时释放后 B 正常拿到自己的响应。
+    /// </summary>
+    [Fact]
+    public async Task QueryAsync_timeout_does_not_leak_response_to_concurrent_query()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+        var serverTask = Task.Run(async () =>
+        {
+            using var client = await listener.AcceptTcpClientAsync();
+            await using var stream = client.GetStream();
+            _ = await ReadAsciiLineAsync(stream);   // CMD1（不回复）
+            _ = await ReadAsciiLineAsync(stream);   // CMD2（修复后：A 超时释放 gate 后 B 才写入）
+            await stream.WriteAsync(Encoding.ASCII.GetBytes("RESP-B\n"));
+            await stream.FlushAsync();
+        });
+
+        using var channel = new TcpInstrumentChannel();
+        await channel.ConnectAsync(IPAddress.Loopback.ToString(), port, CancellationToken.None);
+
+        var timeoutTask = Assert.ThrowsAsync<OperationCanceledException>(() =>
+            channel.QueryAsync("CMD1", TimeSpan.FromMilliseconds(500)));
+        var concurrentTask = channel.QueryAsync("CMD2", TimeSpan.FromSeconds(2));
+
+        await timeoutTask;
+        Assert.Equal("RESP-B", await concurrentTask);   // 修复前：RESP-B 被 A 的挂起读抢走/串扰
+        await serverTask;
+    }
+
     private static async Task<string> ReadAsciiLineAsync(Stream stream)
     {
         var bytes = new List<byte>();

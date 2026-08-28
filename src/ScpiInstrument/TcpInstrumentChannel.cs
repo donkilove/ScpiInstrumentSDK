@@ -12,6 +12,7 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
     private StreamReader? _reader;   // 连接生命周期内复用：避免每次查询新建缓冲导致粘包残留/字节丢失
     private readonly Encoding _encoding = Encoding.ASCII;
     private readonly object _lock = new();
+    private readonly SemaphoreSlim _queryGate = new(1, 1);   // 审计 SC-01：操作级串行化（写+读原子，防并发查询响应串扰）
     private bool _disposed;
 
     public bool IsConnected => _client is { Connected: true };
@@ -66,18 +67,27 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
         var cmd = scpiCommand + "\n";
         var buffer = _encoding.GetBytes(cmd);
 
-        lock (_lock)
-        {
-            if (_stream is not { CanWrite: true }) throw new InvalidOperationException("连接已断开");
-            _stream.Write(buffer, 0, buffer.Length);
-            _stream.Flush();
-        }
-
         using var timeoutCts = new CancellationTokenSource(timeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
-        var response = await _reader.ReadLineAsync(linkedCts.Token);
-        return response ?? string.Empty;
+        // 审计 SC-01：写+读整体串行化——并发查询时响应与命令一一对应，不再串扰
+        await _queryGate.WaitAsync(linkedCts.Token).ConfigureAwait(false);
+        try
+        {
+            lock (_lock)
+            {
+                if (_stream is not { CanWrite: true }) throw new InvalidOperationException("连接已断开");
+                _stream.Write(buffer, 0, buffer.Length);
+                _stream.Flush();
+            }
+
+            var response = await _reader.ReadLineAsync(linkedCts.Token).ConfigureAwait(false);
+            return response ?? string.Empty;
+        }
+        finally
+        {
+            _queryGate.Release();
+        }
     }
 
     public async Task SendAsync(string scpiCommand, CancellationToken ct = default)
@@ -88,14 +98,21 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
         var cmd = scpiCommand + "\n";
         var buf = _encoding.GetBytes(cmd);
 
-        lock (_lock)
+        // 审计 SC-01：与查询互斥（避免写命令穿插在查询的读写之间）
+        await _queryGate.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            if (_stream is not { CanWrite: true }) throw new InvalidOperationException("连接已断开");
-            _stream.Write(buf, 0, buf.Length);
-            _stream.Flush();
+            lock (_lock)
+            {
+                if (_stream is not { CanWrite: true }) throw new InvalidOperationException("连接已断开");
+                _stream.Write(buf, 0, buf.Length);
+                _stream.Flush();
+            }
         }
-
-        await Task.CompletedTask;
+        finally
+        {
+            _queryGate.Release();
+        }
     }
 
     public async Task SendManyAsync(IReadOnlyList<string> commands, CancellationToken ct = default)
@@ -106,14 +123,21 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
         // 合并为一条 TCP 消息（\n 分隔）：SCPI 仪器顺序执行，省去逐条往返
         var buf = _encoding.GetBytes(string.Join('\n', commands) + "\n");
 
-        lock (_lock)
+        // 审计 SC-01：与查询互斥；合并消息整体发送不受影响
+        await _queryGate.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            if (_stream is not { CanWrite: true }) throw new InvalidOperationException("连接已断开");
-            _stream.Write(buf, 0, buf.Length);
-            _stream.Flush();
+            lock (_lock)
+            {
+                if (_stream is not { CanWrite: true }) throw new InvalidOperationException("连接已断开");
+                _stream.Write(buf, 0, buf.Length);
+                _stream.Flush();
+            }
         }
-
-        await Task.CompletedTask;
+        finally
+        {
+            _queryGate.Release();
+        }
     }
 
     public async Task<byte[]> QueryBinaryAsync(
@@ -128,30 +152,46 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
         if (expectedBytes <= 0 || expectedBytes > maxReadSize)
             throw new ArgumentOutOfRangeException(nameof(expectedBytes), $"expectedBytes 必须在 1-{maxReadSize} 范围内");
 
-        await SendAsync(scpiCommand, ct);
-
         using var timeoutCts = new CancellationTokenSource(timeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
-        var firstByte = await ReadByteAsync(_stream!, linkedCts.Token);
-        if (firstByte == (byte)'#')
-            return await ReadScpiDefiniteLengthBlockAsync(_stream!, maxReadSize, linkedCts.Token);
-
-        var buffer = new byte[expectedBytes];
-        buffer[0] = firstByte;
-        var totalRead = 1;
-
-        while (totalRead < expectedBytes)
+        // 审计 SC-01：写+读整体串行化（不再经 SendAsync 避免 gate 重入死锁）
+        await _queryGate.WaitAsync(linkedCts.Token).ConfigureAwait(false);
+        try
         {
-            var read = await _stream!.ReadAsync(buffer, totalRead, expectedBytes - totalRead, linkedCts.Token);
-            if (read == 0) break;
-            totalRead += read;
+            var cmd = scpiCommand + "\n";
+            var buf = _encoding.GetBytes(cmd);
+            lock (_lock)
+            {
+                if (_stream is not { CanWrite: true }) throw new InvalidOperationException("连接已断开");
+                _stream.Write(buf, 0, buf.Length);
+                _stream.Flush();
+            }
+
+            var firstByte = await ReadByteAsync(_stream!, linkedCts.Token);
+            if (firstByte == (byte)'#')
+                return await ReadScpiDefiniteLengthBlockAsync(_stream!, maxReadSize, linkedCts.Token);
+
+            var buffer = new byte[expectedBytes];
+            buffer[0] = firstByte;
+            var totalRead = 1;
+
+            while (totalRead < expectedBytes)
+            {
+                var read = await _stream!.ReadAsync(buffer, totalRead, expectedBytes - totalRead, linkedCts.Token);
+                if (read == 0) break;
+                totalRead += read;
+            }
+
+            if (totalRead != expectedBytes)
+                throw new InvalidOperationException($"数据不完整: 期望 {expectedBytes} 字节，实际收到 {totalRead} 字节");
+
+            return buffer;
         }
-
-        if (totalRead != expectedBytes)
-            throw new InvalidOperationException($"数据不完整: 期望 {expectedBytes} 字节，实际收到 {totalRead} 字节");
-
-        return buffer;
+        finally
+        {
+            _queryGate.Release();
+        }
     }
 
     private static async Task<byte[]> ReadScpiDefiniteLengthBlockAsync(
