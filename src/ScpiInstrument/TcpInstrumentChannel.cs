@@ -197,7 +197,7 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
             }
 
             if (totalRead != expectedBytes)
-                throw new InvalidOperationException($"数据不完整: 期望 {expectedBytes} 字节，实际收到 {totalRead} 字节");
+                throw new ConnectionClosedException($"数据不完整: 期望 {expectedBytes} 字节，实际收到 {totalRead} 字节（连接已关闭）");   // 审计建议：与 ReadExactAsync 的 EOF 语义统一
 
             return buffer;
         }
@@ -332,24 +332,31 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
 
     public async Task DisconnectAsync()
     {
-        lock (_lock)
+        // 审计建议：与 ConnectAsync 对称取 gate——防断开与在途操作交错（_stream 中途置空）
+        await _queryGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
         {
-            try
+            lock (_lock)
             {
-                _stream?.Close();
-                _client?.Close();
-            }
-            catch
-            {
-            }
-            finally
-            {
-                _stream = null;
-                _client = null;
+                try
+                {
+                    _stream?.Close();
+                    _client?.Close();
+                }
+                catch
+                {
+                }
+                finally
+                {
+                    _stream = null;
+                    _client = null;
+                }
             }
         }
-
-        await Task.CompletedTask;
+        finally
+        {
+            _queryGate.Release();
+        }
     }
 
     public void Dispose()

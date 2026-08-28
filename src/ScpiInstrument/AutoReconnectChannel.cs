@@ -6,13 +6,18 @@ namespace ScpiInstrument;
 /// <summary>
 /// 自动重连装饰器：包装任意 <see cref="IInstrumentChannel"/>，在连接类异常时自动重连并重放原操作。
 /// 协议/数据类错误不触发重连（避免掩盖真实问题）。
+/// 注意（审计 SC-09）：操作重放为 at-least-once 语义——写命令（SendAsync/SendManyAsync）
+/// 在"写入成功但响应丢失"或重连重放场景下可能重复执行，调用方需保证写命令幂等。
+/// 边界（审计 SC-03）：半开连接（对端不回复不关闭）由调用方 timeout 兜底抛
+/// OperationCanceledException，不触发重连；对端关闭（EOF）抛 <see cref="ConnectionClosedException"/> 触发重连。
 /// </summary>
 public sealed class AutoReconnectChannel : IInstrumentChannel, IDisposable
 {
     private readonly IInstrumentChannel _inner;
     private readonly AutoReconnectOptions _options;
-    private string? _host;
-    private int _port;
+    private readonly SemaphoreSlim _reconnectGate = new(1, 1);   // 审计 SC-05：重连互斥（防并发失败操作重连风暴）
+    private volatile string? _host;                              // 审计 SC-10：跨线程读写可见性
+    private volatile int _port;
 
     public AutoReconnectChannel(IInstrumentChannel inner, AutoReconnectOptions? options = null)
     {
@@ -92,6 +97,11 @@ public sealed class AutoReconnectChannel : IInstrumentChannel, IDisposable
     {
         SocketException => true,
         IOException => true,
+        // 审计 SC-03：EOF/连接关闭用独立类型判定（置于 InvalidOperationException 分支之前，
+        // 模式匹配按声明顺序，子类分支在后会永远不命中）
+        ConnectionClosedException => true,
+        // 审计 SC-07：旧路径（InvalidOperationException + 中文消息匹配）保留为兼容层，
+        // 新代码应抛 ConnectionClosedException 走类型判定
         InvalidOperationException => IsConnectionStateMessage(ex.Message),
         _ => false
     };
@@ -100,12 +110,16 @@ public sealed class AutoReconnectChannel : IInstrumentChannel, IDisposable
         => message.Contains("未连接仪器", StringComparison.Ordinal)
             || message.Contains("连接已断开", StringComparison.Ordinal);
 
-    private TimeSpan BackoffFor(int attempt)
+    /// <summary>
+    /// 指数退避 + 随机抖动（±25%，Random.Shared 线程安全），防多通道同步重试共振（审计 SC-10）。
+    /// 先 clamp 再构造 TimeSpan（防 attempt 大时 2^n 溢出 OverflowException，审计建议）。
+    /// </summary>
+    internal TimeSpan BackoffFor(int attempt)
     {
-        var backoff = TimeSpan.FromMilliseconds(
-            _options.InitialBackoff.TotalMilliseconds * Math.Pow(2, attempt - 1));
-
-        return backoff > _options.MaxBackoff ? _options.MaxBackoff : backoff;
+        var backoffMs = _options.InitialBackoff.TotalMilliseconds * Math.Pow(2, attempt - 1);
+        var cappedMs = Math.Min(backoffMs, _options.MaxBackoff.TotalMilliseconds);
+        var jitter = cappedMs * 0.25 * (Random.Shared.NextDouble() * 2 - 1);
+        return TimeSpan.FromMilliseconds(Math.Max(0, cappedMs + jitter));
     }
 
     private async Task ReconnectAsync(CancellationToken ct)
@@ -113,7 +127,17 @@ public sealed class AutoReconnectChannel : IInstrumentChannel, IDisposable
         if (_host is null)
             throw new InvalidOperationException("尚未建立过连接，无法自动重连");
 
-        await _inner.ConnectAsync(_host, _port, ct);
+        // 审计 SC-05：重连互斥——并发失败操作的重连排队串行执行（不再并发连接风暴）；
+        // 连接建立本身幂等，串行多次重连无害（每次重连后重放操作，成功即止）
+        await _reconnectGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await _inner.ConnectAsync(_host, _port, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _reconnectGate.Release();
+        }
     }
 
     public void Dispose() => (_inner as IDisposable)?.Dispose();
