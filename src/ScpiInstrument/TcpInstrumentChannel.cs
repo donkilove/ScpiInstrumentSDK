@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -7,9 +6,10 @@ namespace ScpiInstrument;
 
 public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
 {
+    private const int MaxLineLength = 64 * 1024;   // 审计 SC-02：文本响应行长度上限（防畸形无限行）
+
     private TcpClient? _client;
     private NetworkStream? _stream;
-    private StreamReader? _reader;   // 连接生命周期内复用：避免每次查询新建缓冲导致粘包残留/字节丢失
     private readonly Encoding _encoding = Encoding.ASCII;
     private readonly object _lock = new();
     private readonly SemaphoreSlim _queryGate = new(1, 1);   // 审计 SC-01：操作级串行化（写+读原子，防并发查询响应串扰）
@@ -47,7 +47,8 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
             await _client.ConnectAsync(host, port).WaitAsync(timeoutCts.Token);
             _stream = _client.GetStream();
             _stream.ReadTimeout = 5000;
-            _reader = new StreamReader(_stream, _encoding, leaveOpen: true);
+            // 审计 SC-02：不再使用 StreamReader——其内部缓冲会吞掉文本行之后的字节，
+            // 与 QueryBinaryAsync 的裸流读取交错时丢字节；统一字节级读取
         }
         catch
         {
@@ -62,7 +63,6 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
     {
         if (_stream is not { CanWrite: true }) throw new InvalidOperationException("未连接仪器");
         if (_disposed) throw new ObjectDisposedException(nameof(TcpInstrumentChannel));
-        if (_reader is null) throw new InvalidOperationException("未连接仪器");
 
         var cmd = scpiCommand + "\n";
         var buffer = _encoding.GetBytes(cmd);
@@ -81,8 +81,7 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
                 _stream.Flush();
             }
 
-            var response = await _reader.ReadLineAsync(linkedCts.Token).ConfigureAwait(false);
-            return response ?? string.Empty;
+            return await ReadResponseLineAsync(linkedCts.Token).ConfigureAwait(false);
         }
         finally
         {
@@ -219,7 +218,9 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
 
     private static async Task ConsumeOptionalBlockTerminatorAsync(NetworkStream stream, CancellationToken ct)
     {
-        var first = await TryReadAvailableByteAsync(stream, TimeSpan.FromMilliseconds(100), ct);
+        // 审计 SC-02：CTS 带超时无条件读取（替代 DataAvailable 轮询）——可取消、
+        // 无忙轮询；块尾迟到时仍能等到，不因轮询相位错过
+        var first = await TryReadByteWithTimeoutAsync(stream, TimeSpan.FromMilliseconds(100), ct);
         if (first is null)
             return;
 
@@ -228,7 +229,7 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
 
         if (first == (byte)'\r')
         {
-            var second = await TryReadAvailableByteAsync(stream, TimeSpan.FromMilliseconds(20), ct);
+            var second = await TryReadByteWithTimeoutAsync(stream, TimeSpan.FromMilliseconds(20), ct);
             if (second is null || second == (byte)'\n')
                 return;
 
@@ -238,21 +239,54 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
         throw new InvalidOperationException($"SCPI binary block 结束符无效: 0x{first.Value:X2}");
     }
 
-    private static async Task<byte?> TryReadAvailableByteAsync(
+    private static async Task<byte?> TryReadByteWithTimeoutAsync(
         NetworkStream stream,
         TimeSpan timeout,
         CancellationToken ct)
     {
-        var sw = Stopwatch.StartNew();
-        while (!stream.DataAvailable)
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(timeout);
+        var buf = new byte[1];
+        try
         {
-            if (sw.Elapsed >= timeout)
-                return null;
+            var n = await stream.ReadAsync(buf.AsMemory(0, 1), cts.Token).ConfigureAwait(false);
+            return n == 0 ? null : buf[0];
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return null;   // 超时无数据
+        }
+    }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(5), ct);
+    /// <summary>逐字节读取文本响应行（至 '\n'，过滤 '\r'）；审计 SC-02：与二进制读取共用字节级通道，无缓冲混用。</summary>
+    private async Task<string> ReadResponseLineAsync(CancellationToken ct)
+    {
+        if (_stream is null)
+        {
+            throw new InvalidOperationException("未连接仪器");
         }
 
-        return await ReadByteAsync(stream, ct);
+        var bytes = new List<byte>(64);
+        while (true)
+        {
+            var b = await ReadByteAsync(_stream, ct).ConfigureAwait(false);
+            if (b == (byte)'\n')
+            {
+                break;
+            }
+
+            if (b != (byte)'\r')
+            {
+                bytes.Add(b);
+            }
+
+            if (bytes.Count > MaxLineLength)
+            {
+                throw new InvalidOperationException($"响应行长度超限：{MaxLineLength} 字节");
+            }
+        }
+
+        return _encoding.GetString(bytes.ToArray());
     }
 
     private static async Task<byte> ReadByteAsync(NetworkStream stream, CancellationToken ct)
@@ -288,7 +322,6 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
         {
             try
             {
-                _reader?.Dispose();
                 _stream?.Close();
                 _client?.Close();
             }
@@ -297,7 +330,6 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
             }
             finally
             {
-                _reader = null;
                 _stream = null;
                 _client = null;
             }
@@ -319,7 +351,6 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
         {
         }
 
-        _reader?.Dispose();
         _stream?.Dispose();
         _client?.Dispose();
     }

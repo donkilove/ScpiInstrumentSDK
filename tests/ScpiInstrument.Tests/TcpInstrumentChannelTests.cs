@@ -344,6 +344,49 @@ public class TcpInstrumentChannelTests
         await serverTask;
     }
 
+    // ---- 审计 SC-02：StreamReader 缓冲与裸流混用（文本/二进制交错丢字节） ----
+
+    /// <summary>
+    /// SC-02: 仪器把文本响应与二进制块同段发送（流水线场景）——修复前 StreamReader
+    /// 在 ReadLineAsync 时把块头吞进内部缓冲，后续裸流读取丢字节挂起；
+    /// 修复后统一字节级读取，文本行只消费到 '\n'，二进制块完整可读。
+    /// </summary>
+    [Fact]
+    public async Task QueryAsync_then_QueryBinaryAsync_no_byte_loss_when_responses_share_segment()
+    {
+        var payload = Enumerable.Range(0, 12).Select(i => (byte)(i + 1)).ToArray();
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+        var serverTask = Task.Run(async () =>
+        {
+            using var client = await listener.AcceptTcpClientAsync();
+            await using var stream = client.GetStream();
+            _ = await ReadAsciiLineAsync(stream);   // CMD1
+
+            // 同段发送：文本响应 + 二进制块头 + 负载（模拟仪器一次发出多响应）
+            var combined = Encoding.ASCII.GetBytes("RESP-A\n#2" + payload.Length.ToString("D2"))
+                .Concat(payload)
+                .ToArray();
+            await stream.WriteAsync(combined);
+            await stream.FlushAsync();
+
+            _ = await ReadAsciiLineAsync(stream);   // CMD2（数据已提前发送）
+        });
+
+        using var channel = new TcpInstrumentChannel();
+        await channel.ConnectAsync(IPAddress.Loopback.ToString(), port, CancellationToken.None);
+
+        var text = await channel.QueryAsync("CMD1", TimeSpan.FromSeconds(2));
+        var binary = await channel.QueryBinaryAsync(
+            "CMD2", expectedBytes: 4096, timeout: TimeSpan.FromSeconds(2));
+
+        Assert.Equal("RESP-A", text);
+        Assert.Equal(payload, binary);   // 修复前：块头被 StreamReader 吞掉 → 挂起/异常
+        await serverTask;
+    }
+
     private static async Task<string> ReadAsciiLineAsync(Stream stream)
     {
         var bytes = new List<byte>();
