@@ -1,13 +1,13 @@
 # ScpiInstrument
 
-[![NuGet](https://img.shields.io/badge/NuGet-0.2.0-blue)](https://github.com/donkilove/ScpiInstrument/pkgs/nuget/ScpiInstrument)
+[![NuGet](https://img.shields.io/badge/NuGet-0.4.1-blue)](https://github.com/donkilove/ScpiInstrument/pkgs/nuget/ScpiInstrument)
 [![CI](https://github.com/donkilove/ScpiInstrument/actions/workflows/ci.yml/badge.svg)](https://github.com/donkilove/ScpiInstrument/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![TargetFramework](https://img.shields.io/badge/.NET-8.0-512BD4)](https://dotnet.microsoft.com/download/dotnet/8.0)
+[![TargetFramework](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/download/dotnet/10.0)
 
 [English](README.md) · **简体中文**
 
-一个基于 .NET 8 的仪器通信库:通过 TCP/IP 使用 SCPI 协议与测试测量仪器通信,并支持频谱分析仪 trace 数据解析。
+一个基于 .NET 10 的仪器通信库:通过 TCP/IP 使用 SCPI 协议与测试测量仪器通信,并支持频谱分析仪 trace 数据解析。
 
 本库从内部生产测试主机中提取并发布为可复用组件,让多个测试主机应用可以共享一套经过充分验证的通信栈,而无需重复维护源代码。
 
@@ -42,7 +42,7 @@
 包发布在 GitHub Packages(NuGet 源):
 
 ```bash
-dotnet add package ScpiInstrument --version 0.2.0 \
+dotnet add package ScpiInstrument --version 0.4.1 \
   --source "https://nuget.pkg.github.com/donkilove/index.json"
 ```
 
@@ -50,7 +50,7 @@ dotnet add package ScpiInstrument --version 0.2.0 \
 
 ## 快速开始
 
-环境要求:.NET 8 SDK
+环境要求:.NET 10 SDK
 
 ```bash
 # 构建
@@ -156,18 +156,18 @@ src/
       TraceDataParser.cs           # REAL,32 trace 解析
       TraceAnalysisResult.cs       # 解析结果记录
 tests/
-  ScpiInstrument.Tests/            # xUnit 测试套件(33 个测试)
+  ScpiInstrument.Tests/            # xUnit 测试套件(49 个测试)
 ```
 
 ## 测试与验证
 
-- 33 个 xUnit 测试,覆盖协议解析、分包、错误路径、重连行为与模拟场景。
+- 49 个 xUnit 测试,覆盖协议解析、分包、错误路径、重连行为与模拟场景。
 - 测试套件内嵌来自真实 Agilent N9020A 的现场数据固件(采集于 2026-06-11),离线测试也能贴近真实设备行为。
 - 每次 push 与 pull request 都会在 CI 中执行完整构建与测试(`.github/workflows/ci.yml`)。
 
 ## 版本说明
 
-`v0.1.x` 是从内部生产测试主机提取的孵化期快照。`v0.2.0` 新增自动重连、模拟通道与现场数据固件,并以 `ScpiInstrument` 名称作为 NuGet 包首次发布。API 尚未承诺长期稳定;待多个测试主机实际使用该库后,将开始更严格的兼容性管理。
+`v0.4.0` 将目标框架升级到 .NET 10(TFM、CI、依赖);37 个测试保持全绿。`v0.1.x` 是从内部生产测试主机提取的孵化期快照。`v0.2.0` 新增自动重连、模拟通道与现场数据固件,并以 `ScpiInstrument` 名称作为 NuGet 包首次发布。`v0.3.0` 新增 `SendManyAsync`(批量命令发送,减少 TCP 往返)并复用单 `StreamReader` 消除跨查询缓冲字节丢失。`v0.3.1` 新增 `SpectrumAnalyzerCommands.LinkQueries` 链接查询(一次往返取多个值)。`v0.4.1` 为审计修复批次(SC-01~12):操作级串行化(并发下无响应串扰)、统一字节级读取(不再混用 StreamReader/裸流)、EOF 类型化 `ConnectionClosedException`(触发自动重连)、重连互斥(无重连风暴)、NaN/Infinity trace 拒绝、抖动退避、链接查询响应切分、Connect/Dispose 路径加固(49 测试全绿)。API 尚未承诺长期稳定;待多个测试主机实际使用该库后,将开始更严格的兼容性管理。
 
 ## 参与贡献
 
