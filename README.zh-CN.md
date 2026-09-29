@@ -1,7 +1,7 @@
-# ScpiInstrument
+# ScpiInstrumentSDK
 
-[![NuGet](https://img.shields.io/badge/NuGet-0.4.1-blue)](https://github.com/donkilove/ScpiInstrument/pkgs/nuget/ScpiInstrument)
-[![CI](https://github.com/donkilove/ScpiInstrument/actions/workflows/ci.yml/badge.svg)](https://github.com/donkilove/ScpiInstrument/actions/workflows/ci.yml)
+[![NuGet](https://img.shields.io/badge/NuGet-0.5.0-blue)](https://github.com/donkilove/ScpiInstrumentSDK/pkgs/nuget/ScpiInstrumentSDK)
+[![CI](https://github.com/donkilove/ScpiInstrumentSDK/actions/workflows/ci.yml/badge.svg)](https://github.com/donkilove/ScpiInstrumentSDK/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![TargetFramework](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/download/dotnet/10.0)
 
@@ -42,7 +42,7 @@
 包发布在 GitHub Packages(NuGet 源):
 
 ```bash
-dotnet add package ScpiInstrument --version 0.4.1 \
+dotnet add package ScpiInstrumentSDK --version 0.5.0 \
   --source "https://nuget.pkg.github.com/donkilove/index.json"
 ```
 
@@ -167,7 +167,7 @@ tests/
 
 ## 版本说明
 
-`v0.4.0` 将目标框架升级到 .NET 10(TFM、CI、依赖);37 个测试保持全绿。`v0.1.x` 是从内部生产测试主机提取的孵化期快照。`v0.2.0` 新增自动重连、模拟通道与现场数据固件,并以 `ScpiInstrument` 名称作为 NuGet 包首次发布。`v0.3.0` 新增 `SendManyAsync`(批量命令发送,减少 TCP 往返)并复用单 `StreamReader` 消除跨查询缓冲字节丢失。`v0.3.1` 新增 `SpectrumAnalyzerCommands.LinkQueries` 链接查询(一次往返取多个值)。`v0.4.1` 为审计修复批次(SC-01~12):操作级串行化(并发下无响应串扰)、统一字节级读取(不再混用 StreamReader/裸流)、EOF 类型化 `ConnectionClosedException`(触发自动重连)、重连互斥(无重连风暴)、NaN/Infinity trace 拒绝、抖动退避、链接查询响应切分、Connect/Dispose 路径加固(49 测试全绿)。API 尚未承诺长期稳定;待多个测试主机实际使用该库后,将开始更严格的兼容性管理。
+`v0.5.0` 将 NuGet 包 ID 更名为 `ScpiInstrumentSDK` 以与更名后的 GitHub 仓库保持一致(程序集与命名空间不变)。`v0.4.0` 将目标框架升级到 .NET 10(TFM、CI、依赖);37 个测试保持全绿。`v0.1.x` 是从内部生产测试主机提取的孵化期快照。`v0.2.0` 新增自动重连、模拟通道与现场数据固件,并以 `ScpiInstrument` 名称作为 NuGet 包首次发布。`v0.3.0` 新增 `SendManyAsync`(批量命令发送,减少 TCP 往返)并复用单 `StreamReader` 消除跨查询缓冲字节丢失。`v0.3.1` 新增 `SpectrumAnalyzerCommands.LinkQueries` 链接查询(一次往返取多个值)。`v0.4.1` 为审计修复批次(SC-01~12):操作级串行化(并发下无响应串扰)、统一字节级读取(不再混用 StreamReader/裸流)、EOF 类型化 `ConnectionClosedException`(触发自动重连)、重连互斥(无重连风暴)、NaN/Infinity trace 拒绝、抖动退避、链接查询响应切分、Connect/Dispose 路径加固(49 测试全绿)。API 尚未承诺长期稳定;待多个测试主机实际使用该库后,将开始更严格的兼容性管理。
 
 ## 参与贡献
 

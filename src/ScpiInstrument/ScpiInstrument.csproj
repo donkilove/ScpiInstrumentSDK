@@ -4,18 +4,18 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.4.1</Version>
-    <AssemblyVersion>0.4.1.0</AssemblyVersion>
-    <FileVersion>0.4.1.0</FileVersion>
-    <InformationalVersion>v0.4.1</InformationalVersion>
+    <Version>0.5.0</Version>
+    <AssemblyVersion>0.5.0.0</AssemblyVersion>
+    <FileVersion>0.5.0.0</FileVersion>
+    <InformationalVersion>v0.5.0</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
-    <PackageId>ScpiInstrument</PackageId>
+    <PackageId>ScpiInstrumentSDK</PackageId>
     <Authors>donkilove</Authors>
     <Description>A .NET library for TCP/IP + SCPI instrument communication and spectrum-analyzer trace parsing.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <RepositoryType>git</RepositoryType>
-    <RepositoryUrl>https://github.com/donkilove/ScpiInstrument</RepositoryUrl>
+    <RepositoryUrl>https://github.com/donkilove/ScpiInstrumentSDK</RepositoryUrl>
     <PackageTags>scpi;instrument;spectrum-analyzer;tcp;iot;test</PackageTags>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
