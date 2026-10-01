@@ -146,6 +146,11 @@ public sealed class AutoReconnectChannel : IInstrumentChannel, IDisposable
         }
     }
 
+    /// <summary>
+    /// SI-03：与在途重连并发时 <c>_reconnectGate.Dispose()</c> 会使在途操作抛
+    /// <see cref="ObjectDisposedException"/> 并顶替原始连接异常。调用方须保证
+    /// <b>Dispose 前所有在途操作与重连已完成</b>（静默期）——本类不提供并发 Dispose 防护。
+    /// </summary>
     public void Dispose()
     {
         _reconnectGate.Dispose();   // 复审提示：随通道释放信号量
