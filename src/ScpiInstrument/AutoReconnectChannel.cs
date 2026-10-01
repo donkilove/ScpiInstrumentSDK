@@ -151,9 +151,14 @@ public sealed class AutoReconnectChannel : IInstrumentChannel, IDisposable
     /// <see cref="ObjectDisposedException"/> 并顶替原始连接异常。调用方须保证
     /// <b>Dispose 前所有在途操作与重连已完成</b>（静默期）——本类不提供并发 Dispose 防护。
     /// </summary>
+    /// <summary>
+    /// SI-03（方案 2b）：gate 不再 Dispose（<see cref="SemaphoreSlim.Dispose"/> 非线程安全且
+    /// 仅释放惰性 WaitHandle——不使用 AvailableWaitHandle 时无需 Dispose）。在途重连与
+    /// Dispose 并发时其 finally <c>Release()</c> 不再抛 ObjectDisposedException 顶替原异常。
+    /// 批次 B 的静默期声明保留：重连中直接 Dispose 仍可能得到未预期的重连结果。
+    /// </summary>
     public void Dispose()
     {
-        _reconnectGate.Dispose();   // 复审提示：随通道释放信号量
         (_inner as IDisposable)?.Dispose();
     }
 }

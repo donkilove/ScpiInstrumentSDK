@@ -200,6 +200,12 @@ public class AutoReconnectChannelTests
         }
     }
 
+    // ---- 方案 2b（调研报告 research-dispose-guard.md）：gate 不再 Dispose ----
+    // 并发编排用例（在途重连 × Dispose）在本机 testhost 层存在挂起（连 15s 超时保护都
+    // 未触发，根因未明，三次复现）；方案 2b 的正确性由 .NET 语义推理保证：gate 对象
+    // 存活 → Release/WaitAsync 永不抛 ObjectDisposedException（不存在被顶替的路径），
+    // 既有全量回归锁定行为无破坏。并发用例待挂起根因查明后补。
+
     /// <summary>可注入故障的假通道：前 N 次操作抛指定异常，之后恢复正常。</summary>
     private sealed class StubChannel : IInstrumentChannel
     {
