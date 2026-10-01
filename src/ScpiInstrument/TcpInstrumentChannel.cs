@@ -78,13 +78,14 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
         var cmd = scpiCommand + "\n";
         var buffer = _encoding.GetBytes(cmd);
 
-        using var timeoutCts = new CancellationTokenSource(timeout);
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
-
         // 审计 SC-01：写+读整体串行化——并发查询时响应与命令一一对应，不再串扰
-        await _queryGate.WaitAsync(linkedCts.Token).ConfigureAwait(false);
+        // SI-01：排队仅受外部取消约束——timeout 是 IO 预算，拿到 gate 后才启动（不再被排队挤占）
+        await _queryGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            using var timeoutCts = new CancellationTokenSource(timeout);
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+
             lock (_lock)
             {
                 if (_stream is not { CanWrite: true }) throw new InvalidOperationException("连接已断开");
@@ -162,13 +163,14 @@ public class TcpInstrumentChannel : IInstrumentChannel, IDisposable
         if (expectedBytes <= 0 || expectedBytes > maxReadSize)
             throw new ArgumentOutOfRangeException(nameof(expectedBytes), $"expectedBytes 必须在 1-{maxReadSize} 范围内");
 
-        using var timeoutCts = new CancellationTokenSource(timeout);
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
-
         // 审计 SC-01：写+读整体串行化（不再经 SendAsync 避免 gate 重入死锁）
-        await _queryGate.WaitAsync(linkedCts.Token).ConfigureAwait(false);
+        // SI-01：排队仅受外部取消约束——timeout 是 IO 预算，拿到 gate 后才启动
+        await _queryGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            using var timeoutCts = new CancellationTokenSource(timeout);
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+
             // 审计 SC-06：_stream 防御守卫（未连接/连接已断时不抛裸 NRE）
             if (_stream is not { CanWrite: true }) throw new InvalidOperationException("未连接仪器");
 
