@@ -98,6 +98,45 @@ public class TraceDataParserTests
             TraceDataParser.ParseReal32Trace(data, 2400e6, 100e6));
     }
 
+    // ---- M65：字节序错配防线（大端数据被小端解释产出的值远超物理量程，必须拒绝而非静默通过） ----
+
+    [Fact]
+    public void ParseReal32Trace_rejects_byte_swapped_sample()
+    {
+        // AC-1：-20 dBm 的大端字节（0xC1A00000 反转）被小端解释为 ~41153 dBm → 必须拒绝并给出可操作提示
+        var bigEndian = BitConverter.GetBytes(-20f);
+        Array.Reverse(bigEndian);
+
+        var ex = Assert.Throws<ArgumentException>(() =>
+            TraceDataParser.ParseReal32Trace(bigEndian, 2400e6, 100e6));
+
+        Assert.Contains("字节序", ex.Message);
+        Assert.Contains(":FORM:BORD SWAP", ex.Message);
+    }
+
+    [Fact]
+    public void ParseReal32Trace_allows_values_within_plausible_bounds()
+    {
+        // AC-2：量程边界语义——[-300, +200] dBm 内（含边界）正常解析
+        var result = TraceDataParser.ParseReal32Trace(CreateTrace(-300, 200, -100), 2400e6, 100e6);
+
+        Assert.Equal(200, result.PowerDbm, precision: 6);
+    }
+
+    [Theory]
+    [InlineData(300.0)]    // 上越界
+    [InlineData(-300.5)]   // 下越界
+    public void ParseReal32Trace_rejects_out_of_range_sample(double power)
+    {
+        // AC-2：任一采样越界即拒绝（逐采样检查）
+        var data = CreateTrace(-30, power, -20);
+
+        var ex = Assert.Throws<ArgumentException>(() =>
+            TraceDataParser.ParseReal32Trace(data, 2400e6, 100e6));
+
+        Assert.Contains("字节序", ex.Message);
+    }
+
     private static byte[] CreateTrace(params double[] powers)
     {
         var floats = powers.Select(power => (float)power).ToArray();
