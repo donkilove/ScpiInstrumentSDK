@@ -1,6 +1,6 @@
 # ScpiInstrumentSDK
 
-[![NuGet](https://img.shields.io/badge/NuGet-0.5.0-blue)](https://github.com/donkilove/ScpiInstrumentSDK/pkgs/nuget/ScpiInstrumentSDK)
+[![NuGet](https://img.shields.io/badge/NuGet-0.6.1-blue)](https://github.com/donkilove/ScpiInstrumentSDK/pkgs/nuget/ScpiInstrumentSDK)
 [![CI](https://github.com/donkilove/ScpiInstrumentSDK/actions/workflows/ci.yml/badge.svg)](https://github.com/donkilove/ScpiInstrumentSDK/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![TargetFramework](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/download/dotnet/10.0)
@@ -42,7 +42,7 @@
 包发布在 GitHub Packages(NuGet 源):
 
 ```bash
-dotnet add package ScpiInstrumentSDK --version 0.5.0 \
+dotnet add package ScpiInstrumentSDK --version 0.6.1 \
   --source "https://nuget.pkg.github.com/donkilove/index.json"
 ```
 
@@ -63,6 +63,8 @@ dotnet test ScpiInstrument.sln
 ## 用法
 
 ### 1. 真实仪器(TCP/IP + SCPI)
+
+> `ConnectAsync` 仅接受 **IP 字面量**(如 `192.168.1.1`)——不支持主机名/`localhost`,传入即抛 `ArgumentException`。需要时请先用 `Dns.GetHostAddresses` 解析为 IP。
 
 ```csharp
 using ScpiInstrument;
@@ -91,6 +93,8 @@ var trace = TraceDataParser.ParseReal32Trace(
     spanHz: 100e6);
 ```
 
+> 注意:响应以 `#` 开头(SCPI 定长二进制块)时,返回长度由块头声明决定,`expectedBytes` **不**参与校验——`expectedBytes` 仅对非块模式生效(精确读取字节数;不足将抛 `ConnectionClosedException`)。
+
 ### 2. 自动重连(可选)
 
 ```csharp
@@ -111,6 +115,8 @@ var idn = await channel.QueryAsync(
 ```
 
 默认只有连接类错误(未连接 / 连接断开 / socket / IO)会触发重连;协议或数据错误(如不完整的数据包)从不重连,以免掩盖真实问题。可通过 `AutoReconnectOptions.IsTransient` 自定义瞬时错误判定。
+
+> 注意:主动调用 `DisconnectAsync` 后记录的主机/端口仍保留——断开后任何操作抛「未连接仪器」,属于连接类错误,会**自动以旧地址重连成功**,覆盖调用方「主动断开」的语义。需要保持断开状态,请改用 Dispose 本装饰器。
 
 ### 3. 模拟仪器(无需硬件)
 
@@ -156,18 +162,18 @@ src/
       TraceDataParser.cs           # REAL,32 trace 解析
       TraceAnalysisResult.cs       # 解析结果记录
 tests/
-  ScpiInstrument.Tests/            # xUnit 测试套件(49 个测试)
+  ScpiInstrument.Tests/            # xUnit 测试套件(62 个测试)
 ```
 
 ## 测试与验证
 
-- 49 个 xUnit 测试,覆盖协议解析、分包、错误路径、重连行为与模拟场景。
+- 62 个 xUnit 测试,覆盖协议解析、分包、迟到响应排空、错误路径、重连行为与模拟场景。
 - 测试套件内嵌来自真实 Agilent N9020A 的现场数据固件(采集于 2026-06-11),离线测试也能贴近真实设备行为。
 - 每次 push 与 pull request 都会在 CI 中执行完整构建与测试(`.github/workflows/ci.yml`)。
 
 ## 版本说明
 
-`v0.5.0` 将 NuGet 包 ID 更名为 `ScpiInstrumentSDK` 以与更名后的 GitHub 仓库保持一致(程序集与命名空间不变)。`v0.4.0` 将目标框架升级到 .NET 10(TFM、CI、依赖);37 个测试保持全绿。`v0.1.x` 是从内部生产测试主机提取的孵化期快照。`v0.2.0` 新增自动重连、模拟通道与现场数据固件,并以 `ScpiInstrument` 名称作为 NuGet 包首次发布。`v0.3.0` 新增 `SendManyAsync`(批量命令发送,减少 TCP 往返)并复用单 `StreamReader` 消除跨查询缓冲字节丢失。`v0.3.1` 新增 `SpectrumAnalyzerCommands.LinkQueries` 链接查询(一次往返取多个值)。`v0.4.1` 为审计修复批次(SC-01~12):操作级串行化(并发下无响应串扰)、统一字节级读取(不再混用 StreamReader/裸流)、EOF 类型化 `ConnectionClosedException`(触发自动重连)、重连互斥(无重连风暴)、NaN/Infinity trace 拒绝、抖动退避、链接查询响应切分、Connect/Dispose 路径加固(49 测试全绿)。API 尚未承诺长期稳定;待多个测试主机实际使用该库后,将开始更严格的兼容性管理。
+`v0.6.1` 交付迟到响应排空(SI-04:查询超时/取消或 IO 错误后,下次操作前先排空仪器迟到响应——消除跨查询响应错配)并补齐契约文档缺口(SI-05:`ConnectAsync` 仅接受 IP 字面量;SI-06:`QueryBinaryAsync` 的 `expectedBytes` 分形态语义;SI-07:自动重连覆盖主动断开)——62 个测试全绿。`v0.6.0` 新增 M65 `REAL,32` 字节序错配防线(非规格化 + 量程双层)与 M66 查询超时纯 IO 预算语义(排队不再消耗超时预算),并落地 SI-03 方案 2b(重连 gate 不再 Dispose;并发 Dispose 静默期已声明)。`v0.5.0` 将 NuGet 包 ID 更名为 `ScpiInstrumentSDK` 以与更名后的 GitHub 仓库保持一致(程序集与命名空间不变)。`v0.4.0` 将目标框架升级到 .NET 10(TFM、CI、依赖);37 个测试保持全绿。`v0.1.x` 是从内部生产测试主机提取的孵化期快照。`v0.2.0` 新增自动重连、模拟通道与现场数据固件,并以 `ScpiInstrument` 名称作为 NuGet 包首次发布。`v0.3.0` 新增 `SendManyAsync`(批量命令发送,减少 TCP 往返)并复用单 `StreamReader` 消除跨查询缓冲字节丢失。`v0.3.1` 新增 `SpectrumAnalyzerCommands.LinkQueries` 链接查询(一次往返取多个值)。`v0.4.1` 为审计修复批次(SC-01~12):操作级串行化(并发下无响应串扰)、统一字节级读取(不再混用 StreamReader/裸流)、EOF 类型化 `ConnectionClosedException`(触发自动重连)、重连互斥(无重连风暴)、NaN/Infinity trace 拒绝、抖动退避、链接查询响应切分、Connect/Dispose 路径加固(49 测试全绿)。API 尚未承诺长期稳定;待多个测试主机实际使用该库后,将开始更严格的兼容性管理。
 
 ## 参与贡献
 

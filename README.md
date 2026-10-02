@@ -1,6 +1,6 @@
 # ScpiInstrumentSDK
 
-[![NuGet](https://img.shields.io/badge/NuGet-0.5.0-blue)](https://github.com/donkilove/ScpiInstrumentSDK/pkgs/nuget/ScpiInstrumentSDK)
+[![NuGet](https://img.shields.io/badge/NuGet-0.6.1-blue)](https://github.com/donkilove/ScpiInstrumentSDK/pkgs/nuget/ScpiInstrumentSDK)
 [![CI](https://github.com/donkilove/ScpiInstrumentSDK/actions/workflows/ci.yml/badge.svg)](https://github.com/donkilove/ScpiInstrumentSDK/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![TargetFramework](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/download/dotnet/10.0)
@@ -42,7 +42,7 @@ Extracted from an internal production test host and published as a reusable comp
 The package is published to GitHub Packages (NuGet feed):
 
 ```bash
-dotnet add package ScpiInstrumentSDK --version 0.5.0 \
+dotnet add package ScpiInstrumentSDK --version 0.6.1 \
   --source "https://nuget.pkg.github.com/donkilove/index.json"
 ```
 
@@ -63,6 +63,8 @@ dotnet test ScpiInstrument.sln
 ## Usage
 
 ### 1. Real instrument (TCP/IP + SCPI)
+
+> `ConnectAsync` accepts **IP literals only** (e.g. `192.168.1.1`) — hostnames / `localhost` are not supported and throw `ArgumentException`. Resolve with `Dns.GetHostAddresses` first if needed.
 
 ```csharp
 using ScpiInstrument;
@@ -91,6 +93,8 @@ var trace = TraceDataParser.ParseReal32Trace(
     spanHz: 100e6);
 ```
 
+> Note: when the response starts with `#` (SCPI definite-length binary block), the returned length is the block-header declared length and `expectedBytes` is **not** validated against it — `expectedBytes` only takes effect in non-block mode (exact byte count; a short read throws `ConnectionClosedException`).
+
 ### 2. Auto-reconnect (optional)
 
 ```csharp
@@ -111,6 +115,8 @@ var idn = await channel.QueryAsync(
 ```
 
 By default only connection-class errors (not connected / connection lost / socket / IO) trigger a reconnect. Protocol or data errors (e.g. incomplete payloads) never reconnect, so real problems are not masked. Customize the transient-error predicate via `AutoReconnectOptions.IsTransient`.
+
+> Note: an explicit `DisconnectAsync` keeps the stored host/port — the next operation throws "not connected", which counts as a connection-class error and **reconnects to the old address automatically**, overriding the intentional-disconnect semantics. To stay disconnected, dispose this decorator instead.
 
 ### 3. Mock instrument (no hardware needed)
 
@@ -156,18 +162,18 @@ src/
       TraceDataParser.cs           # REAL,32 trace parsing
       TraceAnalysisResult.cs       # parsed trace result record
 tests/
-  ScpiInstrument.Tests/            # xUnit suite (33 tests)
+  ScpiInstrument.Tests/            # xUnit suite (62 tests)
 ```
 
 ## Validation
 
-- 33 xUnit tests covering protocol parsing, split packets, error paths, reconnect behavior, and mock scenarios.
+- 62 xUnit tests covering protocol parsing, split packets, stale-response drain, error paths, reconnect behavior, and mock scenarios.
 - Field fixtures from a real Agilent N9020A (captured 2026-06-11) are embedded in the test suite, so offline tests closely mirror real-device behavior.
 - Continuous integration runs the full build and test suite on every push and pull request (`.github/workflows/ci.yml`).
 
 ## Versioning
 
-`v0.5.0` renames the NuGet package ID to `ScpiInstrumentSDK` to match the renamed GitHub repository (assembly and namespaces unchanged). `v0.4.0` upgrades the target framework to .NET 10 (TFM, CI, dependencies); all 37 tests remain green. `v0.1.x` was the incubator snapshot extracted from an internal production test host. `v0.2.0` adds auto-reconnect, the mock channel, and field-data fixtures, and is the first release published under the `ScpiInstrument` name as a NuGet package. `v0.3.0` adds `SendManyAsync` (batch command sending to cut TCP round-trips) and reuses a single `StreamReader` per connection to eliminate buffered-byte loss across queries. `v0.3.1` adds `SpectrumAnalyzerCommands.LinkQueries` for combined SCPI queries (one round-trip, multiple values). `v0.4.1` is an audit-fix batch (SC-01~12): per-operation serialization (no cross-response under concurrency), unified byte-level reading (no StreamReader/bare-stream mixing), typed `ConnectionClosedException` for EOF (now triggers auto-reconnect), reconnect mutex (no reconnect storms), NaN/Infinity trace rejection, jittered backoff, `SplitLinkedResponses` for linked queries, and hardened Connect/Dispose paths (49 tests green). The API is not yet committed to long-term stability; stricter compatibility management will begin once multiple test hosts actually consume the library.
+`v0.6.1` ships the stale-response drain (SI-04: after a query timeout/cancellation or IO error, late instrument responses are drained before the next operation — eliminating cross-query response mismatch) and closes contract documentation gaps (SI-05: `ConnectAsync` accepts IP literals only; SI-06: `QueryBinaryAsync` `expectedBytes` semantics per response mode; SI-07: auto-reconnect overrides explicit disconnect) — 62 tests green. `v0.6.0` adds the M65 `REAL,32` byte-order mismatch guard (subnormal + plausible-range dual check) and the M66 pure-IO query timeout budget (queueing no longer consumes the timeout), and lands SI-03 option 2b (reconnect gate no longer disposed; concurrent-dispose quiet period documented). `v0.5.0` renames the NuGet package ID to `ScpiInstrumentSDK` to match the renamed GitHub repository (assembly and namespaces unchanged). `v0.4.0` upgrades the target framework to .NET 10 (TFM, CI, dependencies); all 37 tests remain green. `v0.1.x` was the incubator snapshot extracted from an internal production test host. `v0.2.0` adds auto-reconnect, the mock channel, and field-data fixtures, and is the first release published under the `ScpiInstrument` name as a NuGet package. `v0.3.0` adds `SendManyAsync` (batch command sending to cut TCP round-trips) and reuses a single `StreamReader` per connection to eliminate buffered-byte loss across queries. `v0.3.1` adds `SpectrumAnalyzerCommands.LinkQueries` for combined SCPI queries (one round-trip, multiple values). `v0.4.1` is an audit-fix batch (SC-01~12): per-operation serialization (no cross-response under concurrency), unified byte-level reading (no StreamReader/bare-stream mixing), typed `ConnectionClosedException` for EOF (now triggers auto-reconnect), reconnect mutex (no reconnect storms), NaN/Infinity trace rejection, jittered backoff, `SplitLinkedResponses` for linked queries, and hardened Connect/Dispose paths (49 tests green). The API is not yet committed to long-term stability; stricter compatibility management will begin once multiple test hosts actually consume the library.
 
 ## Contributing
 
