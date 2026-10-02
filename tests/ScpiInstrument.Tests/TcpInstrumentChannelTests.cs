@@ -423,6 +423,234 @@ public class TcpInstrumentChannelTests
             channel.QueryBinaryAsync(":TRAC?", expectedBytes: 4096, timeout: TimeSpan.FromSeconds(1)));
     }
 
+    // ---- SI-04：查询超时后「迟到响应」排空（防下一个查询错配） ----
+
+    /// <summary>
+    /// SI-04 AC1 用例1（核心错配）：查询 A 超时后仪器补发的迟到响应 RESP-A 必须被
+    /// 下次查询排空，B 只能拿到自己的 RESP-B。
+    /// 修复前：B 读到 A 的迟到响应（错配无告警）→ 断言失败（Red）。
+    /// </summary>
+    [Fact]
+    public async Task QueryAsync_stale_late_response_is_drained_before_next_query()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+        // 客户端超时确定发生后服务端才补发（TCS 协调，避免响应早于超时被 A 自己读到）
+        var clientTimedOut = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var serverTask = Task.Run(async () =>
+        {
+            using var client = await listener.AcceptTcpClientAsync();
+            await using var stream = client.GetStream();
+
+            var first = await ReadAsciiLineAsync(stream);
+            Assert.Equal("CMD-A", first);   // 刻意不回复
+            await clientTimedOut.Task;
+            await Task.Delay(100);          // 迟 ~100ms 补发：模拟仪器迟到响应
+            await stream.WriteAsync(Encoding.ASCII.GetBytes("RESP-A\n"));
+            await stream.FlushAsync();
+
+            var second = await ReadAsciiLineAsync(stream);
+            Assert.Equal("CMD-B", second);
+            await stream.WriteAsync(Encoding.ASCII.GetBytes("RESP-B\n"));
+            await stream.FlushAsync();
+        });
+
+        using var channel = new TcpInstrumentChannel();
+        await channel.ConnectAsync(IPAddress.Loopback.ToString(), port, CancellationToken.None);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => channel.QueryAsync("CMD-A", TimeSpan.FromMilliseconds(200)));
+        clientTimedOut.SetResult();
+
+        var result = await channel.QueryAsync("CMD-B", TimeSpan.FromSeconds(2));
+
+        Assert.Equal("RESP-B", result);   // 修复前：错配拿到 "RESP-A"
+        await serverTask;
+    }
+
+    /// <summary>
+    /// SI-04 AC1 用例2（EOF 传播）：补发迟到响应后服务端关闭连接 → 下次查询排空
+    /// 读到 EOF → 抛 ConnectionClosedException（供 AutoReconnect 触发重连），不得静默。
+    /// </summary>
+    [Fact]
+    public async Task QueryAsync_stale_drain_hits_eof_throws_connection_closed()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+        var clientTimedOut = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var serverTask = Task.Run(async () =>
+        {
+            using var client = await listener.AcceptTcpClientAsync();
+            await using var stream = client.GetStream();
+
+            _ = await ReadAsciiLineAsync(stream);   // CMD-A：不回复
+            await clientTimedOut.Task;
+            await Task.Delay(100);
+            await stream.WriteAsync(Encoding.ASCII.GetBytes("RESP-A\n"));
+            await stream.FlushAsync();
+            client.Close();   // 补发迟到响应后立即关闭 → 排空将读到 EOF
+        });
+
+        using var channel = new TcpInstrumentChannel();
+        await channel.ConnectAsync(IPAddress.Loopback.ToString(), port, CancellationToken.None);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => channel.QueryAsync("CMD-A", TimeSpan.FromMilliseconds(200)));
+        clientTimedOut.SetResult();
+
+        await Assert.ThrowsAsync<ConnectionClosedException>(
+            () => channel.QueryAsync("CMD-B", TimeSpan.FromSeconds(2)));
+
+        await serverTask;
+    }
+
+    /// <summary>
+    /// SI-04 AC1 用例3（SendAsync 路径覆盖）：A 超时置脏后，SendAsync 写命令前同样排空
+    /// 迟到响应，后续查询 B 正常拿到自己的 RESP-B（修复前：B 读到迟到 RESP-A）。
+    /// </summary>
+    [Fact]
+    public async Task SendAsync_drains_stale_response_so_next_query_gets_own_response()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+        var clientTimedOut = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var serverTask = Task.Run(async () =>
+        {
+            using var client = await listener.AcceptTcpClientAsync();
+            await using var stream = client.GetStream();
+
+            var first = await ReadAsciiLineAsync(stream);
+            Assert.Equal("CMD-A", first);   // 刻意不回复
+            await clientTimedOut.Task;
+            await Task.Delay(100);
+            await stream.WriteAsync(Encoding.ASCII.GetBytes("RESP-A\n"));   // 迟到响应
+            await stream.FlushAsync();
+
+            var sent = await ReadAsciiLineAsync(stream);   // SendAsync 写入（排空已消费 RESP-A）
+            Assert.Equal(":FREQ:CENT 1 GHz", sent);
+
+            var query = await ReadAsciiLineAsync(stream);
+            Assert.Equal("CMD-B", query);
+            await stream.WriteAsync(Encoding.ASCII.GetBytes("RESP-B\n"));
+            await stream.FlushAsync();
+        });
+
+        using var channel = new TcpInstrumentChannel();
+        await channel.ConnectAsync(IPAddress.Loopback.ToString(), port, CancellationToken.None);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => channel.QueryAsync("CMD-A", TimeSpan.FromMilliseconds(200)));
+        clientTimedOut.SetResult();
+
+        await channel.SendAsync(":FREQ:CENT 1 GHz", CancellationToken.None);
+        var result = await channel.QueryAsync("CMD-B", TimeSpan.FromSeconds(2));
+
+        Assert.Equal("RESP-B", result);   // 修复前：错配拿到 "RESP-A"
+        await serverTask;
+    }
+
+    /// <summary>
+    /// SI-04 复核补修用例4（QueryBinaryAsync 路径）：A 超时置脏后，QueryBinaryAsync 写命令前
+    /// 排空迟到 RESP-A，二进制读取拿到 B 自己的块 payload（修复前：RESP-A 首字节 'R' 被当作
+    /// 非块 payload 起点，读回错配字节）。
+    /// </summary>
+    [Fact]
+    public async Task QueryBinaryAsync_drains_stale_response_before_binary_read()
+    {
+        var payload = Enumerable.Range(0, 12).Select(i => (byte)(i + 1)).ToArray();
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+        var clientTimedOut = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var serverTask = Task.Run(async () =>
+        {
+            using var client = await listener.AcceptTcpClientAsync();
+            await using var stream = client.GetStream();
+
+            var first = await ReadAsciiLineAsync(stream);
+            Assert.Equal("CMD-A", first);   // 刻意不回复
+            await clientTimedOut.Task;
+            await Task.Delay(100);
+            await stream.WriteAsync(Encoding.ASCII.GetBytes("RESP-A\n"));   // 迟到响应
+            await stream.FlushAsync();
+
+            var second = await ReadAsciiLineAsync(stream);
+            Assert.Equal("CMD-B", second);
+            await stream.WriteAsync(Encoding.ASCII.GetBytes($"#2{payload.Length:D2}"));
+            await stream.WriteAsync(payload);
+            await stream.FlushAsync();
+        });
+
+        using var channel = new TcpInstrumentChannel();
+        await channel.ConnectAsync(IPAddress.Loopback.ToString(), port, CancellationToken.None);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => channel.QueryAsync("CMD-A", TimeSpan.FromMilliseconds(200)));
+        clientTimedOut.SetResult();
+
+        var result = await channel.QueryBinaryAsync(
+            "CMD-B", expectedBytes: 4096, timeout: TimeSpan.FromSeconds(3));
+
+        Assert.Equal(payload, result);   // 修复前：错配读到 "ESP-A\n#212"+… 等错位字节
+        await serverTask;
+    }
+
+    /// <summary>
+    /// SI-04 复核补修用例5（SendManyAsync 路径）：A 超时置脏后，SendManyAsync 合并发送前
+    /// 排空迟到 RESP-A，后续查询 B 正常拿到自己的 RESP-B（修复前：B 读到迟到 RESP-A）。
+    /// </summary>
+    [Fact]
+    public async Task SendManyAsync_drains_stale_response_so_next_query_gets_own_response()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+        var clientTimedOut = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var serverTask = Task.Run(async () =>
+        {
+            using var client = await listener.AcceptTcpClientAsync();
+            await using var stream = client.GetStream();
+
+            var first = await ReadAsciiLineAsync(stream);
+            Assert.Equal("CMD-A", first);   // 刻意不回复
+            await clientTimedOut.Task;
+            await Task.Delay(100);
+            await stream.WriteAsync(Encoding.ASCII.GetBytes("RESP-A\n"));   // 迟到响应
+            await stream.FlushAsync();
+
+            var sent1 = await ReadAsciiLineAsync(stream);   // SendManyAsync 合并写入（排空已消费 RESP-A）
+            Assert.Equal("S1", sent1);
+            var sent2 = await ReadAsciiLineAsync(stream);
+            Assert.Equal("S2", sent2);
+
+            var query = await ReadAsciiLineAsync(stream);
+            Assert.Equal("CMD-B", query);
+            await stream.WriteAsync(Encoding.ASCII.GetBytes("RESP-B\n"));
+            await stream.FlushAsync();
+        });
+
+        using var channel = new TcpInstrumentChannel();
+        await channel.ConnectAsync(IPAddress.Loopback.ToString(), port, CancellationToken.None);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => channel.QueryAsync("CMD-A", TimeSpan.FromMilliseconds(200)));
+        clientTimedOut.SetResult();
+
+        await channel.SendManyAsync(["S1", "S2"], CancellationToken.None);
+        var result = await channel.QueryAsync("CMD-B", TimeSpan.FromSeconds(2));
+
+        Assert.Equal("RESP-B", result);   // 修复前：错配拿到 "RESP-A"
+        await serverTask;
+    }
+
     private static async Task<string> ReadAsciiLineAsync(Stream stream)
     {
         var bytes = new List<byte>();

@@ -10,6 +10,9 @@ namespace ScpiInstrument;
 /// 在"写入成功但响应丢失"或重连重放场景下可能重复执行，调用方需保证写命令幂等。
 /// 边界（审计 SC-03）：半开连接（对端不回复不关闭）由调用方 timeout 兜底抛
 /// OperationCanceledException，不触发重连；对端关闭（EOF）抛 <see cref="ConnectionClosedException"/> 触发重连。
+/// 边界（SI-07）：主动 <see cref="DisconnectAsync"/> 后 <c>_host/_port</c> 保留——断开后任何操作抛
+/// 「未连接仪器」将命中重连判定，以旧地址<b>自动重连成功</b>，调用方「主动断开」语义会被覆盖；
+/// 需要真正断开请 Dispose 本装饰器。
 /// </summary>
 public sealed class AutoReconnectChannel : IInstrumentChannel, IDisposable
 {
