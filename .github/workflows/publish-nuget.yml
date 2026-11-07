@@ -1,7 +1,6 @@
 name: publish-nuget
 
 on:
-  workflow_dispatch:
   push:
     tags:
       - 'v*'
@@ -16,10 +15,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup .NET 8
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+
+      # CR-1 RH-02：打包前校验 tag 与 csproj 版本一致——不一致即拒绝发布。
+      # 原先缺这一步且允许 workflow_dispatch：推 v0.6.2 而 csproj 仍是 0.6.1 时，
+      # pack 出的包版本号是 0.6.1，push 遇 --skip-duplicate 静默成功 ⇒ 主仓升 0.6.2 会
+      # NU1101 失败，或误以为已发布而继续引用旧版。现已移除 workflow_dispatch（只允许 tag 触发）。
+      - name: Validate tag matches package version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VER=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' src/ScpiInstrument/ScpiInstrument.csproj)
+          if [ "$TAG" != "$VER" ]; then
+            echo "::error::tag v${TAG} 与 csproj 版本 ${VER} 不一致，拒绝发布"
+            exit 1
+          fi
 
       - name: Restore
         run: dotnet restore ScpiInstrument.sln
